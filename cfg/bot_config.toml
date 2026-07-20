@@ -12,6 +12,6 @@ wall_detection_confidence = 0.7
 entity_detection_confidence = 0.5
 seconds_to_hold_attack_after_reaching_max = 1.5
 play_again_on_win = "yes"
-current_playstyle = "yann-universal.pyla"
+current_playstyle = "yann-universal.iris"
 max_losses = 1
 max_consecutive_losses = 0

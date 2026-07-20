@@ -4,7 +4,7 @@
 
 ## Overview
 
-IrisAI is a computer-vision-based game automation bot for Brawl Stars. It uses ADB + scrcpy for screen mirroring and touch injection, YOLO ONNX models for real-time object detection, EasyOCR for text recognition, and a custom Python scripting system (`.pyla` files) for in-game behavior.
+IrisAI is a computer-vision-based game automation bot for Brawl Stars. It uses ADB + scrcpy for screen mirroring and touch injection, YOLO ONNX models for real-time object detection, EasyOCR for text recognition, and a custom Python scripting system (`.iris` files) for in-game behavior.
 
 ## Quick Reference
 
@@ -24,7 +24,7 @@ IrisAI is a computer-vision-based game automation bot for Brawl Stars. It uses A
 | `utils.py` | Shared utilities (config, OCR, helpers) |
 | `webui/` | Flask web dashboard (queue, settings, control) |
 | `scrcpy/` | Bundled Python scrcpy client |
-| `playstyles/` | `.pyla` behavior scripts |
+| `playstyles/` | `.iris` behavior scripts |
 | `cfg/` | TOML/JSON configuration files |
 
 ## Doc Index
@@ -33,7 +33,7 @@ IrisAI is a computer-vision-based game automation bot for Brawl Stars. It uses A
 - [COMPONENTS.md](COMPONENTS.md) — Detailed component breakdown
 - [DATA_FLOW.md](DATA_FLOW.md) — Data flows & communication patterns
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration system reference
-- [PLAYSTYLE_SYSTEM.md](PLAYSTYLE_SYSTEM.md) — `.pyla` script system
+- [PLAYSTYLE_SYSTEM.md](PLAYSTYLE_SYSTEM.md) — `.iris` script system
 - [STATE_MACHINE.md](STATE_MACHINE.md) — Game state machine
 - [DETECTION_MODELS.md](DETECTION_MODELS.md) — YOLO models & computer vision
 - [DISCORD_BOT.md](DISCORD_BOT.md) — Discord remote control

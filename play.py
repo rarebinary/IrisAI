@@ -17,7 +17,7 @@ except ImportError:
     def add_advanced_visuals(a, b):
         return None
 from state_finder import get_state
-from utils import load_toml_as_dict, count_hsv_pixels, load_brawlers_info, interpret_pyla_code, \
+from utils import load_toml_as_dict, count_hsv_pixels, load_brawlers_info, interpret_iris_code, \
     count_mask_pixels, JOYSTICK_RADIUS, clamp, config_bool
 
 
@@ -31,7 +31,7 @@ PLAYER_HIT_CIRCLE_RADIUS = 53
 
 class Play:
 
-    def __init__(self, main_info_model, tile_detector_model, close_tile_detector_model, window_controller, pyla_code):
+    def __init__(self, main_info_model, tile_detector_model, close_tile_detector_model, window_controller, iris_code):
         bot_config = load_toml_as_dict("cfg/bot_config.toml")
         time_config = load_toml_as_dict("cfg/time_tresholds.toml")
         self.fix_movement_keys = {
@@ -103,7 +103,7 @@ class Play:
         self.entity_detection_confidence = get_config("cfg/bot_config.toml", "entity_detection_confidence", 0.5)
         self.seconds_to_hold_attack_after_reaching_max = get_config("cfg/bot_config.toml", "seconds_to_hold_attack_after_reaching_max", 0.3)
         self.persistent_data = {"time_since_holding_attack": None}
-        self.iris_code = pyla_code
+        self.iris_code = iris_code
         self.context = None
         self.frame = None
         self._executor = ThreadPoolExecutor(max_workers=2)
@@ -696,7 +696,7 @@ class Play:
         return walls, bushes
 
     def get_movement(self):
-        movement, updated_globals = interpret_pyla_code(self.iris_code, self.context)
+        movement, updated_globals = interpret_iris_code(self.iris_code, self.context)
         return movement
 
     def publish_debug_view(self, frame, data, state, movement=None):

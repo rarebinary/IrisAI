@@ -4,7 +4,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        main.py (pyla_main)                       │
+│                        main.py (iris_main)                       │
 │                                                                  │
 │  ┌──────────────┐  ┌──────────┐  ┌──────────────┐              │
 │  │ Play         │  │ Stage    │  │ Lobby        │              │
@@ -84,7 +84,7 @@ The system runs 5+ concurrent threads:
 
 - **Auto-First-Brawler Picker**: If the queue is empty, the bot auto-picks the first available brawler in a lobby. On failure (e.g. OCR miss), it rotates the brawler to the end of the queue and retries.
 
-- **Playstyle Scripting System**: In-game behavior is defined in `.pyla` files — Python scripts executed via `exec()` with a sandboxed `SAFE_GLOBALS` context. The active playstyle is set in `bot_config.toml`. Each script has a JSON metadata header on line 1.
+- **Playstyle Scripting System**: In-game behavior is defined in `.iris` files — Python scripts executed via `exec()` with a sandboxed `SAFE_GLOBALS` context. The active playstyle is set in `bot_config.toml`. Each script has a JSON metadata header on line 1.
 
 - **Unstuck Rotation System**: If movement direction hasn't changed for `unstuck_movement_delay` seconds, the vector is progressively rotated by `angle_step * π/4` (alternating sign) to escape stalemates. The rotated direction is held for `unstuck_movement_hold_time` seconds before further rotation.
 
@@ -142,16 +142,16 @@ IrisAI-main 2/
 │   ├── tileDetector.onnx
 │   ├── closeTileDetector.onnx
 │   └── easyocr/
-├── playstyles/             # .pyla behavior scripts
+├── playstyles/             # .iris behavior scripts
 │   ├── skeleton.py                          (reference template)
-│   ├── default_up.pyla
-│   ├── default_right.pyla
-│   ├── follower.pyla
-│   ├── showdown_survivor.pyla
-│   ├── team_showdown.pyla
-│   ├── universal_smart_v5_Slarckvul_Eddition.pyla
-│   ├── universal_smart_v5_Slarckvul_RUSH.pyla
-│   └── skeleton.py                          (API-generated or uploaded .pyla files appear here)
+│   ├── default_up.iris
+│   ├── default_right.iris
+│   ├── follower.iris
+│   ├── showdown_survivor.iris
+│   ├── team_showdown.iris
+│   ├── universal_smart_v5_Slarckvul_Eddition.iris
+│   ├── universal_smart_v5_Slarckvul_RUSH.iris
+│   └── skeleton.py                          (API-generated or uploaded .iris files appear here)
 ├── images/                 # Template images
 │   ├── states/
 │   └── end_results/

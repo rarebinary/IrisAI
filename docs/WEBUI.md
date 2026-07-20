@@ -38,7 +38,7 @@ WSGI factory function. Creates Flask app, registers blueprints, configures loggi
 | GET | `/api/playstyles` | WebDataService | List playstyles |
 | PUT | `/api/playstyles/active` | WebDataService | Activate playstyle |
 | DELETE | `/api/playstyles/<filename>` | WebDataService | Delete playstyle |
-| POST | `/api/playstyles/import` | WebDataService | Import .pyla file |
+| POST | `/api/playstyles/import` | WebDataService | Import .iris file |
 | GET | `/api/runtime/status` | RuntimeManager | Get bot status |
 | POST | `/api/runtime/start` | RuntimeManager | Start bot |
 | POST | `/api/runtime/pause` | RuntimeManager | Pause bot |
@@ -65,11 +65,11 @@ Thread-safe wrapper for shared bot state using `threading.Event`:
 
 ### RuntimeManager
 Manages bot lifecycle with a worker thread:
-- `start()` → if paused: resume. If idle: launch worker thread calling `pyla_main()` (with auth + queue checks)
+- `start()` → if paused: resume. If idle: launch worker thread calling `iris_main()` (with auth + queue checks)
 - `pause()` → running → pausing (already paused is OK)
 - `stop()` → handles idle (join thread), paused (join thread), running (set stop event)
 - `get_status()` → returns state, is_running, last_error. Auto-idles if thread died.
-- `_run_worker()` → wraps `pyla_main()` with try/except, handles `SystemExit` and generic errors
+- `_run_worker()` → wraps `iris_main()` with try/except, handles `SystemExit` and generic errors
 
 ### States
 ```
@@ -101,7 +101,7 @@ Schema-based serialization for 6 config sections:
 - List playstyles from `playstyles/` directory
 - Activate playstyle (writes to `bot_config.toml`)
 - Delete playstyle (removes file)
-- Import playstyle from uploaded `.pyla` file
+- Import playstyle from uploaded `.iris` file
 
 ### Match History
 - Load from `cfg/match_history.csv`
@@ -154,7 +154,7 @@ Pre-built Tailwind CSS (compiled). Custom styles for the dashboard layout.
 The Flask server is started from `if __name__ == "__main__"` in `main.py`:
 ```python
 port = find_open_port(start_port=5185)  # tries up to 50 ports
-app = create_app(pyla_main, start_discord_bot=True)
+app = create_app(iris_main, start_discord_bot=True)
 app.run(host='127.0.0.1', port=port, debug=False)
 ```
 

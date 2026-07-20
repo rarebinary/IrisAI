@@ -52,7 +52,7 @@
 │  │  │   entities, walls, abilities, ranges, hit_circles,            │  │
 │  │  │   poi.json_gas, joystick, loop_count, game_state...           │  │
 │  │  │                                                                │  │
-│  │  │  interpret_pyla_code(context) → movement (x, y)               │  │
+│  │  │  interpret_iris_code(context) → movement (x, y)               │  │
 │  │  └──────────────────────────┬───────────────────────────────────┘  │
 │  │                             │                                      │
 │  │                             ▼                                      │

@@ -16,7 +16,7 @@
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `current_playstyle` | string | `"default_up.pyla"` | Active playstyle script |
+| `current_playstyle` | string | `"default_up.iris"` | Active playstyle script |
 | `play_again_on_win` | bool | `true` | Auto-click "Play Again" after victory |
 | `minimum_movement_delay` | float | `0.05` | Minimum seconds between movement updates |
 | `unstuck_movement_delay` | int | `20` | Seconds before stuck rotation triggers |

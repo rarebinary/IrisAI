@@ -1,7 +1,7 @@
 import os
 import network
 from config_loader import get_config
-from utils import load_toml_as_dict, save_dict_as_toml, api_base_url, hash_playstyle, PYLA_VERSION, resolve_project_path
+from utils import load_toml_as_dict, save_dict_as_toml, api_base_url, hash_playstyle, IRIS_VERSION, resolve_project_path
 import pandas as pd
 from enum import Enum
 from dataclasses import dataclass
@@ -92,7 +92,7 @@ class TrophyObserver:
             history = pd.DataFrame(
                 columns=["date_time", "brawler_name", "result", "current_trophies", "trophy_delta", "new_winstreak",
                          "playstyle_hash", "playstyle_name", "playstyle_gamemodes", "playstyle_brawlers",
-                         "pyla_version", "power_level"])
+                         "iris_version", "power_level"])
         return history
 
     def save_history(self):
@@ -192,7 +192,7 @@ class TrophyObserver:
                                                            self.win_streak, hash_playstyle(playstyle_info),
                                                            playstyle_info["name"],
                                                            "|".join(playstyle_info["gamemodes"]),
-                                                           "|".join(playstyle_info["brawlers"]), PYLA_VERSION,
+                                                           "|".join(playstyle_info["brawlers"]), IRIS_VERSION,
                                                            (power_level if power_level is not None else -1)]
         self.match_counter += 1
         self.send_results_to_api()

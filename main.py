@@ -38,7 +38,7 @@ from stage_manager import StageManager
 from state_finder import get_state
 from time_management import TimeManagement
 from config_loader import get_config
-from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url, load_pyla_script, save_brawler_data, \
+from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url, load_iris_script, save_brawler_data, \
     clean_queue, get_discord_link
 from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint
 from window_controller import WindowController
@@ -87,7 +87,7 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                 raise ValueError("No valid brawler data found. Please add a brawler configuration in the UI before starting the bot.")
             save_brawler_data(data)
             print("Starting with queue data:", data)
-            self.playstyle_info, iris_code = load_pyla_script(current_playstyle)
+            self.playstyle_info, iris_code = load_iris_script(current_playstyle)
             self.Play = Play(*self.load_models(), self.window_controller, iris_code)
             self.Time_management = TimeManagement()
             self.lobby_automator = LobbyAutomation(self.window_controller)

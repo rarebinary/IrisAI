@@ -10,7 +10,7 @@
 ## Adding a New Playstyle
 
 1. Copy `playstyles/skeleton.py` as reference
-2. Create `playstyles/my_style.pyla`
+2. Create `playstyles/my_style.iris`
 3. Add JSON metadata on line 1: `# {"name": "...", "description": "...", "brawlers": [...], "gamemodes": [...]}`
 4. Write Python code that computes `movement = (x, y)`
 5. Set `current_playstyle = "my_style"` in `bot_config.toml`

@@ -145,29 +145,29 @@ IRIS_API_BASE_URL=https://api.iris.example.com
 
 ---
 
-## Playstyles (`.pyla` Scripts)
+## Playstyles (`.iris` Scripts)
 
 Behavior is defined in **Python scripts** executed safely via sandboxed `exec()`. Set active playstyle in `cfg/bot_config.toml`:
 
 ```toml
-current_playstyle = "yann-universal.pyla"
+current_playstyle = "yann-universal.iris"
 ```
 
 ### Built-in Playstyles
 | File | Description |
 |------|-------------|
-| `default_up.pyla` | Moves UP when no enemies, basic combat |
-| `default_right.pyla` | Moves RIGHT when no enemies, basic combat |
-| `follower.pyla` | Follows nearest teammate |
-| `showdown_survivor.pyla` | Avoids gas, moves to center, follows teammates |
-| `team_showdown.pyla` | Duo Showdown coordination |
-| `knockout.pyla` | Knockout-specific positioning |
-| `universal_smart_v5_*.pyla` | Advanced: archetype-based combat (ASSASSIN/TANK/SNIPER/LOBS/RANGED), wall-aware, ability usage, gas avoidance |
-| `yann-universal.pyla` | Community favorite — balanced all-modes |
+| `default_up.iris` | Moves UP when no enemies, basic combat |
+| `default_right.iris` | Moves RIGHT when no enemies, basic combat |
+| `follower.iris` | Follows nearest teammate |
+| `showdown_survivor.iris` | Avoids gas, moves to center, follows teammates |
+| `team_showdown.iris` | Duo Showdown coordination |
+| `knockout.iris` | Knockout-specific positioning |
+| `universal_smart_v5_*.iris` | Advanced: archetype-based combat (ASSASSIN/TANK/SNIPER/LOBS/RANGED), wall-aware, ability usage, gas avoidance |
+| `yann-universal.iris` | Community favorite — balanced all-modes |
 | `skeleton.py` | **Reference template** — all context variables + function signatures |
 
 ### Creating Your Own
-1. Copy `playstyles/skeleton.py` → `playstyles/my_style.pyla`
+1. Copy `playstyles/skeleton.py` → `playstyles/my_style.iris`
 2. Edit the `run(context)` function — full game state available:
 ```python
 context = {
@@ -193,7 +193,7 @@ context = {
 
 - **Dashboard** — Live match view, trophy graphs, win/loss stats
 - **Queue Manager** — Drag-drop brawler priority, play order (in_order / lowest_to_highest / highest_to_lowest)
-- **Playstyle Editor** — Upload, edit, test `.pyla` files with syntax highlighting
+- **Playstyle Editor** — Upload, edit, test `.iris` files with syntax highlighting
 - **Settings** — All TOML configs exposed with validation + tooltips
 - **Logs** — Real-time structured logs with filtering
 - **Discord Control** — Slash commands: `/start`, `/pause`, `/stop`, `/status`, `/queue`, `/playstyle`
@@ -233,7 +233,7 @@ context = {
                                      ▼
                           ┌──────────────────┐
                           │  Playstyle       │
-                          │  (.pyla script)  │
+                          │  (.iris script)  │
                           └────────┬─────────┘
                                    ▼
                           ┌──────────────────┐

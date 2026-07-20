@@ -30,7 +30,7 @@ States are detected by `state_finder.py` via OpenCV template matching, then disp
      │  gameplay in progress    │    │  (may appear after       │
      │  Handler: Play.main()    │    │   match found)           │
       │    → run YOLO detection  │    │  Handler: (no-op)               │
-      │    → execute .pyla code  │    │  brawler selected by            │
+      │    → execute .iris code  │    │  brawler selected by            │
       │    → send touch commands │    │  start_game() → LobbyAutomation │
      └───────────┬──────────────┘    └──────────────────────────┘
                  │

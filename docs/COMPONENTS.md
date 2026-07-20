@@ -2,16 +2,16 @@
 
 ## main.py — Entry Point & Orchestrator
 
-**Key Class:** `Main` (inner class of `pyla_main()`)
+**Key Class:** `Main` (inner class of `iris_main()`)
 
 ### Initialization Flow
 ```
-pyla_main(discord_bot, queue_data, stop_event, runtime_control)
+iris_main(discord_bot, queue_data, stop_event, runtime_control)
   ├── Monkey-patch inspect.getfile (Nuitka compat)
   ├── Apply queue play order (lowest_to_highest/highest_to_lowest/in_order)
   ├── Clean queue data (remove brawlers at target), raise ValueError if empty
   ├── Save brawler data
-  ├── Load playstyle script via load_pyla_script()
+  ├── Load playstyle script via load_iris_script()
   ├── WindowController(scrcpy + ADB, optional max_ips)
   ├── Play(3 ONNX models, wall/tile detection)
   ├── TimeManagement(timer thresholds)
@@ -20,7 +20,7 @@ pyla_main(discord_bot, queue_data, stop_event, runtime_control)
   ├── TrophyObserver(trophy tracking) — synced from first queue brawler
   ├── RuntimeManager(start/pause/stop)
   ├── Start state checker thread (daemon, runs at frame rate)
-  ├── (Flask is created in __main__, not inside pyla_main)
+  ├── (Flask is created in __main__, not inside iris_main)
   └── Main.main() loop
 ```
 
@@ -87,7 +87,7 @@ Play.main(frame, brawler, main, frame_time=0.0)
   └── Play.loop(brawler, data, current_time)
         ├── Build context dict (entities, walls, abilities, ranges, hit_circles, etc.)
         ├── Enforce minimum_movement_delay
-        ├── interpret_pyla_code() → movement (x,y)
+        ├── interpret_iris_code() → movement (x,y)
         └── unstuck_movement_if_needed(movement) → rotated vector if stuck
 ```
 
@@ -105,7 +105,7 @@ Play.main(frame, brawler, main, frame_time=0.0)
 
 ### Movement System
 
-1. `.pyla` script is executed via `interpret_pyla_code()` with game context
+1. `.iris` script is executed via `interpret_iris_code()` with game context
 2. Script returns `movement` = `(x, y)` where -1.0 ≤ x,y ≤ 1.0
 3. Coordinates are clamped by `clamp_movement()` to `[-JOYSTICK_RADIUS*ratio, +JOYSTICK_RADIUS*ratio]`
 4. Scaled coordinates are sent via `do_movement()` as touch events (touch_down anchor + touch_move target)
@@ -445,7 +445,7 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
 ## webui/ — Flask Web Dashboard
 
 ### app.py — Flask App
-- `create_app(pyla_main, start_discord_bot)` — WSGI factory
+- `create_app(iris_main, start_discord_bot)` — WSGI factory
 - Routes: queue management (CRUD, import, reorder, push-all-to-target, clear-all), playstyles (list/delete/import/activate), settings (6 sections + reset per section), runtime control (start/pause/stop + status polling), player info, match history, login validation, bootstrap data, asset serving
 - Discord bot injection via `_Suppress*` middleware classes (suppresses polling noise from werkzeug logs)
 - Error handling: 400 for `KeyError`/`FileNotFoundError`/`ValueError`, 500 for unexpected
@@ -461,7 +461,7 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
 
 **RuntimeManager** — Thread lifecycle:
 - States: `idle → running → pausing → paused → running` or `→ stopping → idle` or `→ error → idle`
-- `_run_worker()` — Calls `pyla_main(discord_bot, queue_data, runtime_control=control)`
+- `_run_worker()` — Calls `iris_main(discord_bot, queue_data, runtime_control=control)`
 - `start()`: If paused → resume. If idle → start new thread (with auth + queue checks)
 - `pause()`: Running → pausing. Already paused → ok.
 - `stop()`: Handles idle/paused/running states appropriately
@@ -475,7 +475,7 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
   - `BOT_FIELDS` (14): play_again_on_win, minimum_movement_delay, unstuck_movement_delay, unstuck_movement_hold_time, perceived_tile_size, centered_wall_detection, wall_detection_confidence, entity_detection_confidence, seconds_to_hold_attack_after_reaching_max, idle_pixels_minimum, super/gadget/hypercharge_pixels_minimum, max_losses, max_consecutive_losses
   - `TIMER_FIELDS` (8): super, hypercharge, gadget, wall_detection, no_detection_proceed, state_check, idle, check_if_brawl_stars_crashed
   - `WEBHOOK_FIELDS` (10): webhook_url, discord_id, discord_bot_token, discord_guild_id, telegram_token, telegram_chat_id, ping_when_stuck, ping_when_target_is_reached, ping_every_x_match, ping_every_x_minutes
-- **Playstyles**: list, activate, delete, import from uploaded `.pyla`
+- **Playstyles**: list, activate, delete, import from uploaded `.iris`
 - **Match history**: Load from CSV, aggregate stats (wins/losses per brawler, win rates)
 - **Player info**: Fetch from Brawlify/BS API, cache, validate early access login
 - **Auth**: `get_auth_state()` / `validate_login()` — API key validation

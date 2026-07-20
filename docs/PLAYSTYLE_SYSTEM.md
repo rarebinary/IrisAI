@@ -1,8 +1,8 @@
-# Playstyle System (.pyla Scripts)
+# Playstyle System (.iris Scripts)
 
 ## Overview
 
-Playstyles are Python scripts (`.pyla` files) that determine in-game behavior. They are executed via Python's `exec()` with a sandboxed context. The active playstyle is set in `bot_config.toml` → `current_playstyle`.
+Playstyles are Python scripts (`.iris` files) that determine in-game behavior. They are executed via Python's `exec()` with a sandboxed context. The active playstyle is set in `bot_config.toml` → `current_playstyle`.
 
 ## Script Format
 
@@ -84,19 +84,19 @@ No imports allowed. No file/network access. No access to `__builtins__`, `exec`,
 
 | File | Description |
 |------|-------------|
-| `default_up.pyla` | Moves UP when no enemies, basic combat |
-| `default_right.pyla` | Moves RIGHT when no enemies, basic combat |
-| `follower.pyla` | Follows teammates when no enemies |
-| `showdown_survivor.pyla` | Follows teammates, avoids poison gas, moves to center |
-| `team_showdown.pyla` | Follows teammates + poison gas avoidance |
-| `universal_smart_v5_Slarckvul_Eddition.pyla` | Advanced: archetype-based combat (ASSASSIN/TANK/SNIPER/LOBS/RANGED), wall-aware, ability usage, gas avoidance |
-| `universal_smart_v5_Slarckvul_RUSH.pyla` | Variant with multi-enemy spacing |
-| `skeleton.py` | Reference template with all available context variables and function signatures (not a valid .pyla file — use as documentation) |
+| `default_up.iris` | Moves UP when no enemies, basic combat |
+| `default_right.iris` | Moves RIGHT when no enemies, basic combat |
+| `follower.iris` | Follows teammates when no enemies |
+| `showdown_survivor.iris` | Follows teammates, avoids poison gas, moves to center |
+| `team_showdown.iris` | Follows teammates + poison gas avoidance |
+| `universal_smart_v5_Slarckvul_Eddition.iris` | Advanced: archetype-based combat (ASSASSIN/TANK/SNIPER/LOBS/RANGED), wall-aware, ability usage, gas avoidance |
+| `universal_smart_v5_Slarckvul_RUSH.iris` | Variant with multi-enemy spacing |
+| `skeleton.py` | Reference template with all available context variables and function signatures (not a valid .iris file — use as documentation) |
 
 ## Creating a Custom Playstyle
 
 1. Copy `skeleton.py` as a reference
-2. Create a new `.pyla` file in `playstyles/`
+2. Create a new `.iris` file in `playstyles/`
 3. Add JSON metadata as first line comment
 4. Write Python code that computes `movement = (x, y)`
 5. Set `current_playstyle` in `bot_config.toml` to your filename (without extension)
