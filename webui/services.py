@@ -608,7 +608,7 @@ class WebDataService:
 
     def get_playstyles_payload(self) -> dict[str, Any]:
         bot_config = self._load_config("cfg/bot_config.toml")
-        current_playstyle = bot_config.get("current_playstyle", "default_up.iris")
+        current_playstyle = bot_config.get("current_playstyle", "lane_up.iris")
         playstyles = []
         for item in get_playstyles_list():
             metadata = item.get("metadata") or {}
@@ -704,7 +704,7 @@ class WebDataService:
             return self._select_fields(self._load_config("cfg/general_config.toml"), self.GENERAL_FIELDS)
         if section == "bot":
             payload = self._select_fields(self._load_config("cfg/bot_config.toml"), self.BOT_FIELDS)
-            payload["current_playstyle"] = self._load_config("cfg/bot_config.toml").get("current_playstyle", "default_up.iris")
+            payload["current_playstyle"] = self._load_config("cfg/bot_config.toml").get("current_playstyle", "lane_up.iris")
             return payload
         if section == "timers":
             return self._select_fields(self._load_config("cfg/time_tresholds.toml"), self.TIMER_FIELDS)

@@ -741,7 +741,7 @@ def get_playstyles_list():
 
 def load_default_iris_script():
     config = load_toml_as_dict("cfg/bot_config.toml")
-    current_playstyle = config.get("current_playstyle", "default_up.iris")
+    current_playstyle = config.get("current_playstyle", "lane_up.iris")
     return load_iris_script(current_playstyle)
 
 
