@@ -78,7 +78,7 @@ CONFIG_DEFAULTS = {
     ("cfg/bot_config.toml", "entity_detection_confidence"): 0.5,
     ("cfg/bot_config.toml", "wall_detection_confidence"): 0.5,
     ("cfg/bot_config.toml", "re_apply_movement"): False,
-    ("cfg/bot_config.toml", "current_playstyle"): "default_up.pyla",
+    ("cfg/bot_config.toml", "current_playstyle"): "default_up.iris",
     ("cfg/bot_config.toml", "max_losses"): 5,
     ("cfg/bot_config.toml", "max_consecutive_losses"): 3,
     ("cfg/bot_config.toml", "seconds_to_hold_attack_after_reaching_max"): 0.3,

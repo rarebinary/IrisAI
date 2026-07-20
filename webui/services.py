@@ -21,11 +21,11 @@ from utils import (
     get_playstyles_list,
     load_brawlers_info,
     load_brawler_data,
-    load_pyla_script,
+    load_iris_script,
     load_toml_as_dict,
     normalize_brawler_filename,
     resolve_project_path,
-    save_dict_as_toml, PYLA_VERSION, api_update_brawler_data, clear_brawler_data, save_brawler_data,
+    save_dict_as_toml, IRIS_VERSION, api_update_brawler_data, clear_brawler_data, save_brawler_data,
 )
 
 try:
@@ -58,7 +58,7 @@ except (ImportError, ModuleNotFoundError):
 def check_user_exists(username):
     url = f'https://{api_base_url}/check_user'
 
-    params = {'username': username, "API-Key": os.environ.get("PYLA_API_KEY", "")}
+    params = {'username': username, "API-Key": os.environ.get("IRIS_API_KEY", "")}
     response = network.get(url, params=params)
 
     if response.status_code == 200:
@@ -79,8 +79,8 @@ def check_if_exists(username):
         return False
 
 
-PATREON_LINK = "https://www.patreon.com/pyla/membership"
-PATREON_LABEL = "www.patreon.com/c/pyla"
+PATREON_LINK = "https://www.patreon.com/iris/membership"
+PATREON_LABEL = "www.patreon.com/c/iris"
 INVALID_PLAYER_TAG_MESSAGE = "Player tag is incorrect. Use your Brawl Stars player tag, not your Supercell ID."
 logger = logging.getLogger(__name__)
 
@@ -364,7 +364,7 @@ class WebDataService:
             }
 
     def get_current_version(self) -> str:
-        return PYLA_VERSION
+        return IRIS_VERSION
 
     def get_latest_version_safe(self) -> str | None:
         if api_base_url == "localhost":
@@ -608,14 +608,14 @@ class WebDataService:
 
     def get_playstyles_payload(self) -> dict[str, Any]:
         bot_config = self._load_config("cfg/bot_config.toml")
-        current_playstyle = bot_config.get("current_playstyle", "default_up.pyla")
+        current_playstyle = bot_config.get("current_playstyle", "default_up.iris")
         playstyles = []
         for item in get_playstyles_list():
             metadata = item.get("metadata") or {}
             filename = item.get("filename")
             playstyles.append({
                 "filename": filename,
-                "name": metadata.get("name") or filename.replace(".pyla", ""),
+                "name": metadata.get("name") or filename.replace(".iris", ""),
                 "description": metadata.get("description") or "No description provided.",
                 "author": metadata.get("author") or "Unknown",
                 "date": metadata.get("date") or "",
@@ -633,7 +633,7 @@ class WebDataService:
         if not target_path.exists():
             raise FileNotFoundError(f"Playstyle '{filename}' was not found.")
 
-        metadata, script = load_pyla_script(filename)
+        metadata, script = load_iris_script(filename)
         if not script.strip():
             raise ValueError("Playstyle file is empty or invalid.")
 
@@ -644,7 +644,7 @@ class WebDataService:
 
     def delete_playstyle(self, filename: str) -> dict[str, Any]:
         safe_filename = secure_filename(filename)
-        if safe_filename != filename or not safe_filename.endswith(".pyla"):
+        if safe_filename != filename or not safe_filename.endswith(".iris"):
             raise ValueError("Invalid playstyle filename.")
 
         filename = safe_filename
@@ -687,9 +687,9 @@ class WebDataService:
 
             if target_path.exists():
                 suffix = 2
-                while resolve_project_path("playstyles", f"{base_name}_{suffix}.pyla").exists():
+                while resolve_project_path("playstyles", f"{base_name}_{suffix}.iris").exists():
                     suffix += 1
-                target_path = resolve_project_path("playstyles", f"{base_name}_{suffix}.pyla")
+                target_path = resolve_project_path("playstyles", f"{base_name}_{suffix}.iris")
 
             shutil.move(str(temp_path), str(target_path))
         finally:
@@ -704,7 +704,7 @@ class WebDataService:
             return self._select_fields(self._load_config("cfg/general_config.toml"), self.GENERAL_FIELDS)
         if section == "bot":
             payload = self._select_fields(self._load_config("cfg/bot_config.toml"), self.BOT_FIELDS)
-            payload["current_playstyle"] = self._load_config("cfg/bot_config.toml").get("current_playstyle", "default_up.pyla")
+            payload["current_playstyle"] = self._load_config("cfg/bot_config.toml").get("current_playstyle", "default_up.iris")
             return payload
         if section == "timers":
             return self._select_fields(self._load_config("cfg/time_tresholds.toml"), self.TIMER_FIELDS)
@@ -889,7 +889,7 @@ class WebDataService:
                     "playstyle_gamemodes": [
                         value for value in str(row.get("playstyle_gamemodes", "") or "").split("|") if value
                     ],
-                    "pyla_version": str(row.get("pyla_version", "") or "").strip(),
+                    "iris_version": str(row.get("iris_version", "") or "").strip(),
                     "power_level": power_level,
                 })
 

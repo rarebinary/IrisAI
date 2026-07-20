@@ -701,26 +701,26 @@ def interpret_iris_code(iris_code, context):
     try:
         exec(iris_code, safe_globals)
     except Exception as e:
-        print(f"Error executing .pyla code")
+        print(f"Error executing .iris code")
         traceback.print_exc()
         return None, safe_globals
 
     return safe_globals.get('movement', None), safe_globals
 
 
-def load_pyla_script(filename):
+def load_iris_script(filename):
     script_path = resolve_project_path("playstyles", filename)
     try:
         with open(script_path, 'r', encoding='utf-8-sig') as file:
             metadata_header = file.readline().strip()
             metadata = json.loads(metadata_header) if metadata_header else {}
-            pyla_script = file.read()
-        return metadata, pyla_script
+            iris_script = file.read()
+        return metadata, iris_script
     except FileNotFoundError:
         print(f"Error: The file {script_path} was not found.")
         return "", ""
     except Exception as e:
-        print(f"An error occurred while loading the .pyla script: {e}")
+        print(f"An error occurred while loading the .iris script: {e}")
         traceback.print_exc()
         return "", ""
 
@@ -730,8 +730,8 @@ def get_playstyles_list():
     playstyles = []
     if playstyles_dir.exists():
         for filename in os.listdir(playstyles_dir):
-            if filename.endswith(".pyla"):
-                metadata, _ = load_pyla_script(filename)
+            if filename.endswith(".iris"):
+                metadata, _ = load_iris_script(filename)
                 playstyles.append({
                     "filename": filename,
                     "metadata": metadata
@@ -739,10 +739,10 @@ def get_playstyles_list():
     return playstyles
 
 
-def load_default_pyla_script():
+def load_default_iris_script():
     config = load_toml_as_dict("cfg/bot_config.toml")
-    current_playstyle = config.get("current_playstyle", "default_up.pyla")
-    return load_pyla_script(current_playstyle)
+    current_playstyle = config.get("current_playstyle", "default_up.iris")
+    return load_iris_script(current_playstyle)
 
 
 def hash_playstyle(playstyle_info):
