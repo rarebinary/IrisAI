@@ -12,7 +12,6 @@
   <a href="https://github.com/rarebinary/IrisAI/actions"><img src="https://img.shields.io/github/actions/workflow/status/rarebinary/IrisAI/ci.yml?label=build" alt="Build"></a>
   <a href="https://github.com/rarebinary/IrisAI/releases"><img src="https://img.shields.io/github/v/release/rarebinary/IrisAI" alt="Release"></a>
   <a href="https://github.com/rarebinary/IrisAI/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
-  <a href="https://discord.gg/irisai"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://github.com/rarebinary/IrisAI/stargazers"><img src="https://img.shields.io/github/stars/rarebinary/IrisAI?style=social" alt="Stars"></a>
 </p>
 
@@ -21,6 +20,8 @@
 **Iris** is a local-first automation assistant for **Brawl Stars**. It runs on your PC, connects to any Android emulator via ADB, and uses computer vision (YOLO/ONNX) to play matches — farming trophies, gems, battle pass progress, brawler mastery, and star drops while you're AFK.
 
 No memory injection. No game modification. No cloud dependency. Just pure computer vision + human-like ADB inputs.
+
+> Based on the original [PylaAI](https://github.com/PylaAI/PylaAI/) (Windows-only) — rearchitected for macOS, stability, and distribution.
 
 ---
 
@@ -335,15 +336,6 @@ iris update-models
 ### Core Developers
 - **@rarebinary** — Architecture, computer vision, stability rewrite, distribution pipeline
 
-### Community
-- **@ivanyordanovgt** — Original PylaAI foundation
-- **@AngelFireLA** — Playstyle system, Discord bot
-- **@awarzu** — Web UI, state machine
-- **@Maayan080** — ONNX models, detection tuning
-- **@simonrejzek** — macOS support, CoreML integration
-- **@bocchi-the-cat** — Playstyle scripts, archetype logic
-- **@Ariko842** — Testing, bug reports, documentation
-
 ### Powered By
 - [ONNX Runtime](https://onnxruntime.ai/) · [YOLOv8](https://github.com/ultralytics/ultralytics) · [OpenCV](https://opencv.org/) · [scrcpy](https://github.com/Genymobile/scrcpy) · [adbutils](https://github.com/openatx/adbutils) · [Flask](https://flask.palletsprojects.com/) · [discord.py](https://discordpy.readthedocs.io/) · [Nuitka](https://nuitka.net/) · [EasyOCR](https://github.com/JaidedAI/EasyOCR)
 
@@ -352,7 +344,6 @@ iris update-models
 ## Links
 
 - 📖 **Docs**: [Getting Started](GETTING_STARTED.md) · [Config Reference](CONFIG_REFERENCE.md) · [Troubleshooting](TROUBLESHOOTING.md)
-- 💬 **Discord**: [discord.gg/irisai](https://discord.gg/irisai) — support, playstyle sharing, updates
 - 🐛 **Issues**: [GitHub Issues](https://github.com/rarebinary/IrisAI/issues)
 - 🔧 **Releases**: [GitHub Releases](https://github.com/rarebinary/IrisAI/releases) — pre-built models, standalone apps
 
