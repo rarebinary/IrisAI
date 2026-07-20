@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="IrisAI",
-    version="1.0.0",
+    version="0.0.1",
     packages=find_packages(exclude=["api", "cfg", "images", "models"]),
     python_requires=">=3.11",
     install_requires=[

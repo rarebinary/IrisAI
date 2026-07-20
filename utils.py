@@ -384,7 +384,7 @@ def save_brawler_icon(brawler_name):
     print(f"Icon not found for brawler '{brawler_name}'")
 
 
-IRIS_VERSION = "0.8.14"
+IRIS_VERSION = "0.0.1"
 
 
 def get_latest_version():
