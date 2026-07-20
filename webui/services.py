@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 from packaging import version
-from .. import network
+from network import make_request, get, post, NetworkError
 from werkzeug.utils import secure_filename
 
 from utils import (
