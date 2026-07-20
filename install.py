@@ -71,7 +71,7 @@ def install_deps(gpu_profile):
     ]
 
     if gpu_profile == "coreml":
-        extras = ["torch", "onnxruntime-silicon"]
+        extras = ["torch", "onnxruntime"]
     elif gpu_profile == "cuda":
         extras = ["torch", "onnxruntime-gpu"]
     elif gpu_profile == "directml":
