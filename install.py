@@ -144,10 +144,11 @@ def download_easyocr_models():
     easyocr_dir = Path("models/easyocr")
     easyocr_dir.mkdir(parents=True, exist_ok=True)
 
-    # EasyOCR model files from official repository
+    # EasyOCR model files from our own release
     easyocr_models = {
-        "craft_mlt_25k.pth": "https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/craft_mlt_25k.pth",
-        "english_g2.pth": "https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/english_g2.pth",
+        "craft_mlt_25k.pth": "https://github.com/rarebinary/IrisAI/releases/download/easyocr-v1/craft_mlt_25k.pth",
+        "english_g2.pth": "https://github.com/rarebinary/IrisAI/releases/download/easyocr-v1/english_g2.pth",
+        "latin_g2.pth": "https://github.com/rarebinary/IrisAI/releases/download/easyocr-v1/latin_g2.pth",
     }
 
     print("\nDownloading EasyOCR models...")
