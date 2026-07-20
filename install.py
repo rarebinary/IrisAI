@@ -102,7 +102,7 @@ def download_models():
 
     manifest_path = models_dir / "manifest.json"
     if not manifest_path.exists():
-        print("  No model manifest found — EasyOCR models will be downloaded on first use.")
+        print("  No model manifest found — ONNX models will be downloaded on first use.")
         print("  ONNX models should be placed in models/ manually or via iris update-models.")
         return
 
@@ -137,6 +137,34 @@ def download_models():
             print(f"  {model_name}: downloaded ({len(response.content)//1024//1024} MB)")
         except Exception as e:
             print(f"  {model_name}: download failed ({e})")
+
+
+def download_easyocr_models():
+    """Download EasyOCR model files (craft_mlt_25k.pth, english_g2.pth)."""
+    easyocr_dir = Path("models/easyocr")
+    easyocr_dir.mkdir(parents=True, exist_ok=True)
+
+    # EasyOCR model files from official repository
+    easyocr_models = {
+        "craft_mlt_25k.pth": "https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/craft_mlt_25k.pth",
+        "english_g2.pth": "https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/english_g2.pth",
+    }
+
+    print("\nDownloading EasyOCR models...")
+    for name, url in easyocr_models.items():
+        model_path = easyocr_dir / name
+        if model_path.exists():
+            print(f"  {name}: already exists, skipping")
+            continue
+        print(f"  Downloading {name}...")
+        try:
+            import requests
+            response = requests.get(url, timeout=120)
+            response.raise_for_status()
+            model_path.write_bytes(response.content)
+            print(f"  {name}: downloaded ({len(response.content)//1024//1024} MB)")
+        except Exception as e:
+            print(f"  {name}: download failed ({e})")
 
 
 def verify_adb():
@@ -221,6 +249,7 @@ def main():
 
     print("\nChecking models...")
     download_models()
+    download_easyocr_models()
 
     if not args.no_adb:
         print("\nVerifying ADB...")
