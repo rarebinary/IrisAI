@@ -103,7 +103,7 @@ class Play:
         self.entity_detection_confidence = get_config("cfg/bot_config.toml", "entity_detection_confidence", 0.5)
         self.seconds_to_hold_attack_after_reaching_max = get_config("cfg/bot_config.toml", "seconds_to_hold_attack_after_reaching_max", 0.3)
         self.persistent_data = {"time_since_holding_attack": None}
-        self.pyla_code = pyla_code
+        self.iris_code = pyla_code
         self.context = None
         self.frame = None
         self._executor = ThreadPoolExecutor(max_workers=2)
@@ -696,7 +696,7 @@ class Play:
         return walls, bushes
 
     def get_movement(self):
-        movement, updated_globals = interpret_pyla_code(self.pyla_code, self.context)
+        movement, updated_globals = interpret_pyla_code(self.iris_code, self.context)
         return movement
 
     def publish_debug_view(self, frame, data, state, movement=None):

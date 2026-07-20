@@ -665,7 +665,7 @@ class WebDataService:
 
         original_name = secure_filename(file_storage.filename)
         base_name = Path(original_name).stem or "imported_playstyle"
-        filename = f"{base_name}.pyla"
+        filename = f"{base_name}.iris"
         target_path = resolve_project_path("playstyles", filename)
 
         temp_path = resolve_project_path("playstyles", f".__upload__{filename}")

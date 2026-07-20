@@ -71,7 +71,7 @@ def play_alarm():
 def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
     class Main:
         def __init__(self):
-            current_playstyle = load_toml_as_dict("cfg/bot_config.toml").get("current_playstyle", "default_up.pyla")
+            current_playstyle = load_toml_as_dict("cfg/bot_config.toml").get("current_playstyle", "default_up.iris")
             try:
                 self.max_ips = int(get_config("cfg/general_config.toml", "max_ips", "auto"))
             except ValueError:
