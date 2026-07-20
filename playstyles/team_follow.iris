@@ -1,0 +1,1 @@
+{"name": "Team Follow", "description": "Follows nearest teammate when no enemies visible. Safe positioning for support and thrower brawlers.", "brawlers": ["all"], "gamemodes": ["all"], "author": "Official", "date": "2026-07-20"}

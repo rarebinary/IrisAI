@@ -1,0 +1,1 @@
+{"name": "Lane Right", "description": "Lane control focused on right-side positioning. Moves right when no enemies, basic combat logic.", "brawlers": ["all"], "gamemodes": ["gem_grab", "brawl_ball", "hot_zone", "knockout"], "author": "Official", "date": "2026-07-20"}

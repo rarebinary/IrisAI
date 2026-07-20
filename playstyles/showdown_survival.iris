@@ -1,0 +1,1 @@
+{"name": "Showdown Survival", "description": "Solo/Duo Showdown: avoids gas, moves toward center when safe, follows teammates in Duo.", "brawlers": ["all"], "gamemodes": ["solo_showdown", "duo_showdown"], "author": "Official", "date": "2026-07-20"}

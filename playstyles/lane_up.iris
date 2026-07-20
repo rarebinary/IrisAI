@@ -1,0 +1,1 @@
+{"name": "Lane Up", "description": "Lane control focused on top-side positioning. Moves up when no enemies, basic combat logic.", "brawlers": ["all"], "gamemodes": ["gem_grab", "brawl_ball", "hot_zone", "knockout"], "author": "Official", "date": "2026-07-20"}
