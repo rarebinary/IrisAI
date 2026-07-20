@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "graphify": {
+      "source": "safishamsi/graphify",
+      "sourceType": "github",
+      "skillPath": "graphify/SKILL.md",
+      "computedHash": "eeb21eb18f4ba5f5b765780f277bdca818a541181b29d1269aebd009f050398c"
+    }
+  }
+}

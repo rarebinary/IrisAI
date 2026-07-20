@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.env
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Project specific
+models/*.onnx
+models/easyocr/
+*.log
+debug_clips/
+*.mp4
+*.webm
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+PylaAI.app/
+IrisAI.app/
+*.bin
+
+# Nuitka
+*.build/
+
+# Old artifacts
+PylaAI.zip
+start.bat
+run.py
+stuff_to_copy_paste/
+scrcpy.zip
