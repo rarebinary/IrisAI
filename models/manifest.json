@@ -1,19 +1,19 @@
 {
   "mainInGameModel.onnx": {
     "url": "https://github.com/rarebinary/IrisAI/releases/download/v1/mainInGameModel.onnx",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "e9e2394ab3b65c92b88334a4ecc6675c054ee717c5fea9f35ad8f111ba13a9a4",
     "size_mb": 30,
     "description": "Entity detection YOLO model (player, enemy, teammate)"
   },
   "tileDetector.onnx": {
     "url": "https://github.com/rarebinary/IrisAI/releases/download/v1/tileDetector.onnx",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "34eb23ad1d9f05cd9dd828e38b524b6a519bb4b19f1c0e906c1554dc02326b71",
     "size_mb": 15,
     "description": "Full-frame wall/bush detection YOLO model"
   },
   "closeTileDetector.onnx": {
     "url": "https://github.com/rarebinary/IrisAI/releases/download/v1/closeTileDetector.onnx",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "3d0607ca2c5e1b5b86ff361600ccc8f30ec0b2b86a2074c2ac1d2746fb653b4d",
     "size_mb": 10,
     "description": "Centered wall/bush detection YOLO model"
   }
