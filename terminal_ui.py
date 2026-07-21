@@ -1,9 +1,7 @@
 import os
-import subprocess
+import shutil
 import sys
-import time
 from datetime import datetime
-from threading import Thread
 
 LOG_DIR = "logs"
 
@@ -30,82 +28,87 @@ def _vwidth(s):
     return _ANSI_RE.sub("", s).__len__()
 
 
+def _term_width():
+    return shutil.get_terminal_size().columns
+
+
 def _figlet(text, font):
     try:
         import pyfiglet
         return pyfiglet.figlet_format(text, font=font)
     except ImportError:
-        return text + "\n"
+        return ""
 
 
-def _box(banner, inner_lines, border_color=Style.CYAN):
+def _box(banner, inner_lines, border_color=Style.CYAN, pad=3):
     lines = banner.rstrip("\n").split("\n")
-    max_w = max((_vwidth(l) for l in lines), default=40)
-    inner_w = max_w + 6
+    max_w = max((_vwidth(l) for l in lines), default=20)
+    avail = _term_width() - 4
+    if max_w + pad * 2 + 2 > avail:
+        max_w = avail - pad * 2 - 2
+        if max_w < 10:
+            return ""
+        wrapped = []
+        for line in lines:
+            wrapped.append(line[:_vwidth(line[:max_w])])
+        lines = wrapped
+    inner_w = max_w + pad * 2
     C, W, B, G, D, R = border_color, Style.WHITE, Style.BOLD, Style.GRAY, Style.DIM, Style.RESET
-
     out = [f"{C}╔{'═' * inner_w}╗{R}"]
     out.append(f"{C}║{' ' * inner_w}║{R}")
     for line in lines:
-        out.append(f"{C}║   {W}{B}{line}{R}{' ' * (inner_w - 3 - _vwidth(line))}{C}║{R}")
+        vw = _vwidth(line)
+        if vw > max_w:
+            line = line[:max_w]
+            vw = max_w
+        out.append(f"{C}║{' ' * pad}{W}{B}{line}{R}{' ' * (inner_w - pad - vw)}{C}║{R}")
     out.append(f"{C}║{' ' * inner_w}║{R}")
     for item in inner_lines:
-        out.append(f"{C}║{R}  {item}{' ' * (inner_w - 2 - _vwidth(item))}{C}║{R}")
+        vw = _vwidth(item)
+        out.append(f"{C}║{R}  {item}{' ' * (inner_w - 2 - vw)}{C}║{R}")
     out.append(f"{C}║{' ' * inner_w}║{R}")
     out.append(f"{C}╚{'═' * inner_w}╝{R}")
     return "\n".join(out)
 
 
-def _qr_code(url):
-    try:
-        result = subprocess.run(
-            ["curl", "-s", f"https://qrenco.de/{url}"],
-            capture_output=True, text=True, timeout=5
-        )
-        return result.stdout.strip()
-    except Exception:
-        return ""
-
-
-def print_qr(url, label="Web UI"):
-    qr = _qr_code(url)
-    if not qr:
-        return
-    lines = qr.split("\n")
-    print(f"\n{Style.GRAY}  {label}{Style.RESET}")
-    for line in lines:
-        print(f"  {line}")
-    print(f"  {Style.DIM}{url}{Style.RESET}\n")
+def _pick_logo(avail):
+    fonts = [
+        ("IRIS AI", "slant", 42),
+        ("IRIS", "slant", 28),
+        ("IRIS AI", "small", 24),
+    ]
+    for text, font, w in fonts:
+        if w + 10 <= avail:
+            return _figlet(text, font)
+    return None
 
 
 def print_splash():
-    banner = _figlet("IRIS AI", "slant")
-    splash = _box(banner, [
-        f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}          {Style.GRAY}v2.0.0{Style.RESET}",
+    avail = _term_width()
+    banner = _pick_logo(avail)
+    if not banner:
+        print(f"\n{Style.CYAN}{Style.BOLD}IRIS AI{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}\n")
+        return
+    inner = [
+        f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}",
         f"{Style.DIM}github.com/rarebinary/IrisAI{Style.RESET}",
-    ])
-    print("\n" + splash)
+    ]
+    if avail >= 60:
+        inner[0] = f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}"
+    box = _box(banner, inner)
+    print("\n" + box if box else f"\n{Style.CYAN}{Style.BOLD}IRIS AI{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}\n")
 
 
 def print_crash_banner():
-    banner = _figlet("CRASH", "doom")
-    print()
-    print(_box(banner, [
-        f"{Style.YELLOW}Check logs/ for details{Style.RESET}",
-    ], border_color=Style.RED))
-    print()
-
-
-def cowsay_msg(text, character="default"):
-    try:
-        result = subprocess.run(
-            ["cowsay", "-f", character, text],
-            capture_output=True, text=True, timeout=3
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            print(f"\n{Style.YELLOW}{result.stdout.strip()}{Style.RESET}\n")
-    except Exception:
-        pass
+    avail = _term_width()
+    banner = _pick_logo(avail)
+    if not banner:
+        print(f"\n{Style.RED}{Style.BOLD}ERROR{Style.RESET}  {Style.YELLOW}check logs/{Style.RESET}\n")
+        return
+    box = _box(banner, [
+        f"{Style.YELLOW}check logs/{Style.RESET}",
+    ], border_color=Style.RED)
+    print("\n" + box if box else f"\n{Style.RED}{Style.BOLD}ERROR{Style.RESET}  {Style.YELLOW}check logs/{Style.RESET}\n")
 
 
 def setup_session_logging():
@@ -113,8 +116,7 @@ def setup_session_logging():
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_path = os.path.join(LOG_DIR, f"session_{ts}.log")
     log_file = open(log_path, "a", encoding="utf-8")
-
-    log_file.write(f"--- IrisAI session started at {datetime.now().isoformat()} ---\n")
+    log_file.write(f"--- IrisAI {datetime.now().isoformat()} ---\n")
     log_file.flush()
 
     class Tee:
@@ -123,7 +125,6 @@ def setup_session_logging():
             sys.__stdout__.flush()
             log_file.write(text)
             log_file.flush()
-
         def flush(self_):
             sys.__stdout__.flush()
             log_file.flush()
@@ -134,18 +135,24 @@ def setup_session_logging():
 
 
 def build_status_line(ips, brawler, state, trophies, playstyle, session_time, wins=None, win_streak=None):
+    avail = _term_width() - 2
     parts = [
         f"{Style.CYAN}{ips:.1f}{Style.DIM} IPS{Style.RESET}",
         f"{Style.WHITE}{brawler}{Style.RESET}",
     ]
     if wins is not None:
-        parts.append(f"{Style.GREEN}✔ {wins}{Style.RESET}")
+        parts.append(f"{Style.GREEN}{wins}W{Style.RESET}")
     if state:
-        state_color = Style.GREEN if state == "match" else Style.YELLOW
-        parts.append(f"{state_color}{state}{Style.RESET}")
-    parts.append(f"{Style.MAGENTA}♥ {trophies}{Style.RESET}")
-    if win_streak is not None and win_streak:
-        parts.append(f"{Style.BLUE}🔥 {win_streak}{Style.RESET}")
+        c = Style.GREEN if state == "match" else Style.YELLOW
+        parts.append(f"{c}{state}{Style.RESET}")
+    parts.append(f"{Style.MAGENTA}{trophies}t{Style.RESET}")
+    if win_streak:
+        parts.append(f"{Style.BLUE}s{win_streak}{Style.RESET}")
     parts.append(f"{Style.GRAY}{playstyle}{Style.RESET}")
-    parts.append(f"{Style.DIM}⏱ {session_time}{Style.RESET}")
-    return " │ ".join(parts)
+    parts.append(f"{Style.DIM}{session_time}{Style.RESET}")
+
+    line = " ".join(parts)
+    while _vwidth(line) > avail and len(parts) > 2:
+        parts.pop(-2)
+        line = " ".join(parts)
+    return line
