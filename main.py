@@ -28,6 +28,7 @@ if __name__ == "__main__" and len(sys.argv) >= 9 and sys.argv[1] == "--debug-vie
     sys.exit(0)
 
 from adbutils import AdbError
+import logging
 import socket
 import threading
 import time
@@ -509,6 +510,8 @@ def main():
         print("IrisAI")
 
     log_path = setup_session_logging() if os.environ.get("IRIS_LOG") != "0" else None
+
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
     open_browser_later(local_url)
     sys.excepthook = _global_exception_handler
