@@ -505,7 +505,7 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
 | `print_splash()` | Prints IrisAI ASCII logo (cyan box, red→yellow gradient title via `_apply_gradient()`) |
 | `print_crash_banner()` | Prints bold red "BOT CRASHED" banner with link to logs |
 | `setup_session_logging()` | Tee's `sys.stdout`/`sys.stderr` to both console and `logs/session_<timestamp>.log`. Sets up `LOG_DIR` if missing. Returns log path. |
-| `build_status_line(...)` | Builds a color-formatted status string: `IPS │ Brawler │ State │ Trophies │ Playstyle │ Session Time` |
+| `build_status_line(...)` | Internal helper — builds plain status string, called by `update_status()` |
 | `save_status_cursor()` | Saves cursor position with `\033[s` before main loop starts |
 | `update_status(...)` | Restores to saved cursor via `\033[u`, clears to end of screen via `\033[J`, prints status with animated red→yellow gradient (shifts 3px/sec via `_gradient_offset`). Handles terminal resize without artifacts. |
 
