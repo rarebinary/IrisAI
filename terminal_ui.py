@@ -116,11 +116,16 @@ def _pick_logo(avail):
     return None
 
 
+def _tty():
+    return getattr(sys, '__stdout__', None) or sys.stdout
+
+
 def print_splash():
     avail = _term_width()
     banner = _pick_logo(avail)
     if not banner:
-        print(f"\n{Style.CYAN}{Style.BOLD}IRIS AI{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}\n")
+        _tty().write(f"\n{Style.CYAN}{Style.BOLD}IRIS AI{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}\n\n")
+        _tty().flush()
         return
     inner = [
         f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}",
@@ -129,19 +134,22 @@ def print_splash():
     if avail >= 74:
         inner[0] = f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}"
     box = _box(banner, inner, colorizer=lambda l: _apply_gradient(l, 0))
-    print("\n" + box if box else f"\n{Style.CYAN}{Style.BOLD}IRIS AI{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}\n")
+    _tty().write("\n" + box + "\n" if box else f"\n{Style.CYAN}{Style.BOLD}IRIS AI{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}\n\n")
+    _tty().flush()
 
 
 def print_crash_banner():
     avail = _term_width()
     banner = _pick_logo(avail)
     if not banner:
-        print(f"\n{Style.RED}{Style.BOLD}ERROR{Style.RESET}  {Style.YELLOW}check logs/{Style.RESET}\n")
+        _tty().write(f"\n{Style.RED}{Style.BOLD}ERROR{Style.RESET}  {Style.YELLOW}check logs/{Style.RESET}\n\n")
+        _tty().flush()
         return
     box = _box(banner, [
         f"{Style.YELLOW}check logs/{Style.RESET}",
     ], border_color=Style.RED)
-    print("\n" + box if box else f"\n{Style.RED}{Style.BOLD}ERROR{Style.RESET}  {Style.YELLOW}check logs/{Style.RESET}\n")
+    _tty().write("\n" + box + "\n" if box else f"\n{Style.RED}{Style.BOLD}ERROR{Style.RESET}  {Style.YELLOW}check logs/{Style.RESET}\n\n")
+    _tty().flush()
 
 
 def setup_session_logging():
@@ -152,18 +160,15 @@ def setup_session_logging():
     log_file.write(f"--- IrisAI {datetime.now().isoformat()} ---\n")
     log_file.flush()
 
-    class Tee:
+    class FileLogger:
         def write(self_, text):
-            sys.__stdout__.write(text)
-            sys.__stdout__.flush()
             log_file.write(text)
             log_file.flush()
         def flush(self_):
-            sys.__stdout__.flush()
             log_file.flush()
 
-    sys.stdout = Tee()
-    sys.stderr = Tee()
+    sys.stdout = FileLogger()
+    sys.stderr = FileLogger()
     return log_path
 
 
@@ -196,9 +201,9 @@ _STATUS_SAVED = False
 
 def save_status_cursor():
     global _STATUS_SAVED
-    sys.stdout.write("\033[s")
+    _tty().write("\033[s")
     _STATUS_SAVED = True
-    sys.stdout.flush()
+    _tty().flush()
 
 
 def update_status(ips, brawler, state, trophies, playstyle, session_time, wins=None, win_streak=None):
@@ -227,8 +232,9 @@ def update_status(ips, brawler, state, trophies, playstyle, session_time, wins=N
 
     colored = line if avail < 10 else _apply_gradient(line, _gradient_offset)
 
+    t = _tty()
     if _STATUS_SAVED:
-        sys.stdout.write("\033[u\033[J" + colored + "\033[K")
+        t.write("\033[u\033[J" + colored + "\033[K")
     else:
-        sys.stdout.write("\r" + colored + "\033[K")
-    sys.stdout.flush()
+        t.write("\r" + colored + "\033[K")
+    t.flush()

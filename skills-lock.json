@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "ascii-art": {
+      "source": "nousresearch/hermes-agent",
+      "sourceType": "github",
+      "skillPath": "skills/creative/ascii-art/SKILL.md",
+      "computedHash": "fc3c60c1b412c1429d5da161047eed837e6f734706ad9729459ae76220ce5953"
+    },
     "graphify": {
       "source": "safishamsi/graphify",
       "sourceType": "github",
