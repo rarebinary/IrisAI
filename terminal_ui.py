@@ -32,15 +32,39 @@ def _term_width():
     return shutil.get_terminal_size().columns
 
 
+_figlet_cache = {}
+
 def _figlet(text, font):
-    try:
-        import pyfiglet
-        return pyfiglet.figlet_format(text, font=font)
-    except ImportError:
-        return ""
+    key = (text, font)
+    if key not in _figlet_cache:
+        try:
+            import pyfiglet
+            _figlet_cache[key] = pyfiglet.figlet_format(text, font=font)
+        except ImportError:
+            _figlet_cache[key] = ""
+    return _figlet_cache[key]
 
 
-def _box(banner, inner_lines, border_color=Style.CYAN, pad=3):
+_gradient_offset = 0
+_SHIFT_SPEED = 3
+
+def _apply_gradient(text, offset=0):
+    if not text:
+        return text
+    w = len(text)
+    if w == 0:
+        return text
+    out = []
+    for i, ch in enumerate(text):
+        t = ((i + offset) % w) / w
+        r = 255
+        g = int(255 * t)
+        out.append(f"\033[38;2;{r};{g};0m{ch}")
+    out.append(Style.RESET)
+    return "".join(out)
+
+
+def _box(banner, inner_lines, border_color=Style.CYAN, pad=3, colorizer=None):
     lines = banner.rstrip("\n").split("\n")
     max_w = max((_vwidth(l) for l in lines), default=20)
     avail = _term_width() - 4
@@ -61,7 +85,12 @@ def _box(banner, inner_lines, border_color=Style.CYAN, pad=3):
         if vw > max_w:
             line = line[:max_w]
             vw = max_w
-        out.append(f"{C}▐{' ' * pad}{W}{B}{line}{R}{' ' * (inner_w - pad - vw)}{C}▌{R}")
+        if colorizer:
+            colored = colorizer(line)
+            cvw = _vwidth(colored)
+            out.append(f"{C}▐{' ' * pad}{B}{colored}{R}{' ' * (inner_w - pad - cvw)}{C}▌{R}")
+        else:
+            out.append(f"{C}▐{' ' * pad}{W}{B}{line}{R}{' ' * (inner_w - pad - vw)}{C}▌{R}")
     out.append(f"{C}▐{' ' * inner_w}▌{R}")
     for item in inner_lines:
         vw = _vwidth(item)
@@ -99,7 +128,7 @@ def print_splash():
     ]
     if avail >= 74:
         inner[0] = f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}"
-    box = _box(banner, inner)
+    box = _box(banner, inner, colorizer=lambda l: _apply_gradient(l, 0))
     print("\n" + box if box else f"\n{Style.CYAN}{Style.BOLD}IRIS AI{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}\n")
 
 
@@ -173,9 +202,33 @@ def save_status_cursor():
 
 
 def update_status(ips, brawler, state, trophies, playstyle, session_time, wins=None, win_streak=None):
-    line = build_status_line(ips, brawler, state, trophies, playstyle, session_time, wins, win_streak)
+    global _gradient_offset
+    _gradient_offset += _SHIFT_SPEED
+
+    avail = _term_width()
+    parts = [
+        f"{ips:.1f} IPS",
+        brawler,
+    ]
+    if wins is not None:
+        parts.append(f"{wins}W")
+    if state:
+        parts.append(state)
+    parts.append(f"{trophies}t")
+    if win_streak:
+        parts.append(f"s{win_streak}")
+    parts.append(playstyle)
+    parts.append(session_time)
+
+    line = " ".join(parts)
+    while len(line) > avail and len(parts) > 2:
+        parts.pop(-2)
+        line = " ".join(parts)
+
+    colored = line if avail < 10 else _apply_gradient(line, _gradient_offset)
+
     if _STATUS_SAVED:
-        sys.stdout.write("\033[u\033[J" + line + "\033[K")
+        sys.stdout.write("\033[u\033[J" + colored + "\033[K")
     else:
-        sys.stdout.write("\r" + line + "\033[K")
+        sys.stdout.write("\r" + colored + "\033[K")
     sys.stdout.flush()
