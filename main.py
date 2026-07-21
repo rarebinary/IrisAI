@@ -43,7 +43,7 @@ from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url,
 from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint
 from window_controller import WindowController
 from webui import create_app
-from terminal_ui import print_splash, setup_session_logging, print_crash_banner, build_status_line, Style
+from terminal_ui import print_splash, setup_session_logging, print_crash_banner, build_status_line, print_qr, cowsay_msg, Style
 
 
 def apply_play_order(queue_data):
@@ -497,21 +497,24 @@ def cli_entry_point():
 
 
 def main():
-    if sys.stdout.isatty():
-        print_splash()
-    else:
-        print("IrisAI — Brawl Stars Automation Bot")
-    log_path = setup_session_logging() if os.environ.get("IRIS_LOG") != "0" else None
-    if log_path:
-        print(f"Session log → {log_path}")
-    print("The only official discord is", get_discord_link())
-
     port = find_open_port()
     app = create_app(iris_main, start_discord_bot=True)
     local_url = f"http://127.0.0.1:{port}"
-    print(f"Web UI → {local_url}")
-    open_browser_later(local_url)
 
+    if sys.stdout.isatty():
+        print_splash()
+        print_qr(local_url.replace("http://", ""), "Web UI")
+        cowsay_msg("IrisAI is ready! Let's grind those trophies!", "default")
+        print(f"  {Style.DIM}Discord{Style.RESET}  {get_discord_link()}")
+    else:
+        print("IrisAI — Brawl Stars Automation Bot")
+        print(f"Web UI → {local_url}")
+
+    log_path = setup_session_logging() if os.environ.get("IRIS_LOG") != "0" else None
+    if log_path and not sys.stdout.isatty():
+        print(f"Session log → {log_path}")
+
+    open_browser_later(local_url)
     sys.excepthook = _global_exception_handler
     try:
         app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)

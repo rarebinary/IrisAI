@@ -1,7 +1,9 @@
 import os
+import subprocess
 import sys
 import time
 from datetime import datetime
+from threading import Thread
 
 LOG_DIR = "logs"
 
@@ -54,14 +56,35 @@ def _box(banner, inner_lines, border_color=Style.CYAN):
     return "\n".join(out)
 
 
+def _qr_code(url):
+    try:
+        result = subprocess.run(
+            ["curl", "-s", f"https://qrenco.de/{url}"],
+            capture_output=True, text=True, timeout=5
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
+def print_qr(url, label="Web UI"):
+    qr = _qr_code(url)
+    if not qr:
+        return
+    lines = qr.split("\n")
+    print(f"\n{Style.GRAY}  {label}{Style.RESET}")
+    for line in lines:
+        print(f"  {line}")
+    print(f"  {Style.DIM}{url}{Style.RESET}\n")
+
+
 def print_splash():
     banner = _figlet("IRIS AI", "slant")
-    print()
-    print(_box(banner, [
+    splash = _box(banner, [
         f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}          {Style.GRAY}v2.0.0{Style.RESET}",
         f"{Style.DIM}github.com/rarebinary/IrisAI{Style.RESET}",
-    ]))
-    print()
+    ])
+    print("\n" + splash)
 
 
 def print_crash_banner():
@@ -71,6 +94,18 @@ def print_crash_banner():
         f"{Style.YELLOW}Check logs/ for details{Style.RESET}",
     ], border_color=Style.RED))
     print()
+
+
+def cowsay_msg(text, character="default"):
+    try:
+        result = subprocess.run(
+            ["cowsay", "-f", character, text],
+            capture_output=True, text=True, timeout=3
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            print(f"\n{Style.YELLOW}{result.stdout.strip()}{Style.RESET}\n")
+    except Exception:
+        pass
 
 
 def setup_session_logging():
