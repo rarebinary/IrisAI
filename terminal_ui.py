@@ -160,3 +160,22 @@ def build_status_line(ips, brawler, state, trophies, playstyle, session_time, wi
         parts.pop(-2)
         line = " ".join(parts)
     return line
+
+
+_STATUS_SAVED = False
+
+
+def save_status_cursor():
+    global _STATUS_SAVED
+    sys.stdout.write("\033[s")
+    _STATUS_SAVED = True
+    sys.stdout.flush()
+
+
+def update_status(ips, brawler, state, trophies, playstyle, session_time, wins=None, win_streak=None):
+    line = build_status_line(ips, brawler, state, trophies, playstyle, session_time, wins, win_streak)
+    if _STATUS_SAVED:
+        sys.stdout.write("\033[u\033[J" + line + "\033[K")
+    else:
+        sys.stdout.write("\r" + line + "\033[K")
+    sys.stdout.flush()

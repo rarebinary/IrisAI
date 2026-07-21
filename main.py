@@ -43,7 +43,7 @@ from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url,
 from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint
 from window_controller import WindowController
 from webui import create_app
-from terminal_ui import print_splash, setup_session_logging, print_crash_banner, build_status_line, Style
+from terminal_ui import print_splash, setup_session_logging, print_crash_banner, update_status, save_status_cursor
 
 
 def apply_play_order(queue_data):
@@ -311,6 +311,8 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             fps_timer = time.perf_counter()
             fps_counter = 0
 
+            save_status_cursor()
+
             while True:
                 if self.get_latest_state() == "lobby":
                     if self.should_stop():
@@ -384,7 +386,7 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                         w_streak = self.Stage_manager.Trophy_observer.win_streak if hasattr(self.Stage_manager, "Trophy_observer") else None
                         wins = self.Stage_manager.Trophy_observer.current_wins if hasattr(self.Stage_manager, "Trophy_observer") else None
                         sess = time.strftime("%H:%M:%S", time.gmtime(t_now - self.start_time))
-                        print("\r" + build_status_line(ips, bname, st, tro, self.current_playstyle_name, sess, wins, w_streak) + Style.CLEAR_LINE, end="")
+                        update_status(ips, bname, st, tro, self.current_playstyle_name, sess, wins, w_streak)
                     s_time = t_now
                     c = 0
 

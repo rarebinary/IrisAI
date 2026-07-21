@@ -34,7 +34,7 @@ iris_main(discord_bot, queue_data, stop_event, runtime_control)
 1. If state == "lobby": check stop/pause signals (honored only in lobby)
 2. Auto-pick first brawler if not yet picked (on failure, rotate to end of queue and retry; max 3 "stuck" retries before continuing with current selection)
 3. Enforce `run_for_minutes` timer (3min cooldown after target expires)
-4. Print status line every second (~1 IPS): `IPS | Brawler | State | Trophies | Playstyle | Session Time` via `build_status_line()`
+4. Print status line every second (~1 IPS): `IPS | Brawler | State | Trophies | Playstyle | Session Time` via `update_status()` (saves cursor at start of loop, restores + clears on each update to handle terminal resize)
 5. Periodically check for BS crashes via `device.app_current()`
 6. Get latest frame; if stale >15s → release movement, reconnect scrcpy; if >30s → restart BS
 7. Call `manage_time_tasks(frame)`:
@@ -505,7 +505,9 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
 | `print_splash()` | Prints IrisAI ASCII logo (cyan box, white bold title, dim GitHub link) |
 | `print_crash_banner()` | Prints bold red "BOT CRASHED" banner with link to logs |
 | `setup_session_logging()` | Tee's `sys.stdout`/`sys.stderr` to both console and `logs/session_<timestamp>.log`. Sets up `LOG_DIR` if missing. Returns log path. |
-| `build_status_line(...)` | Builds a color-formatted status string: `IPS │ Brawler │ State │ Trophies │ Playstyle │ Session Time`. Used in `Main.main()` loop, updates in-place via `\r`. |
+| `build_status_line(...)` | Builds a color-formatted status string: `IPS │ Brawler │ State │ Trophies │ Playstyle │ Session Time` |
+| `save_status_cursor()` | Saves cursor position with `\033[s` before main loop starts |
+| `update_status(...)` | Restores to saved cursor via `\033[u`, clears to end of screen via `\033[J`, prints status. Handles terminal resize without artifacts (old `\r` approach left wrapped lines visible). |
 
 ### Style Class
 
