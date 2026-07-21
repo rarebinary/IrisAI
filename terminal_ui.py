@@ -73,13 +73,17 @@ def _box(banner, inner_lines, border_color=Style.CYAN, pad=3):
 
 def _pick_logo(avail):
     fonts = [
-        ("IRIS AI", "slant", 42),
-        ("IRIS", "slant", 28),
-        ("IRIS AI", "small", 24),
+        ("IRIS AI", "3d-ascii", 58),
+        ("IrisAI", "3d-ascii", 49),
+        ("IRIS AI", "slant", 38),
+        ("IRIS", "slant", 23),
+        ("IrisAI", "small", 24),
     ]
     for text, font, w in fonts:
         if w + 10 <= avail:
             return _figlet(text, font)
+    if avail >= 20:
+        return _figlet("IRIS", "small")
     return None
 
 
@@ -93,7 +97,7 @@ def print_splash():
         f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}",
         f"{Style.DIM}github.com/rarebinary/IrisAI{Style.RESET}",
     ]
-    if avail >= 60:
+    if avail >= 74:
         inner[0] = f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}"
     box = _box(banner, inner)
     print("\n" + box if box else f"\n{Style.CYAN}{Style.BOLD}IRIS AI{Style.RESET}  {Style.GRAY}v2.0.0{Style.RESET}\n")
