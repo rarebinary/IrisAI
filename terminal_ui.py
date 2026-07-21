@@ -21,28 +21,56 @@ class Style:
     CLEAR_LINE = "\033[K"
 
 
-LOGO = f"""
-{Style.CYAN}╔═══════════════════════════════════════════════════╗
-║  {Style.WHITE}{Style.BOLD}◈   I R I S   A I   ◈{Style.RESET}{Style.CYAN}                         ║
-║  {Style.GRAY}Brawl Stars Automation Bot{Style.RESET}{Style.CYAN}                          ║
-║  {Style.DIM}github.com/rarebinary/IrisAI{Style.RESET}{Style.CYAN}                     ║
-╚═══════════════════════════════════════════════════╝{Style.RESET}
-"""
+_ANSI_RE = __import__("re").compile(r"\033\[[0-9;]*[a-zA-Z]")
 
-_CRASH_BANNER = f"""
-{Style.RED}{Style.BOLD}╔══════════════════════════════════════════════╗
-║  ✖   B O T   C R A S H E D              ║
-║  {Style.YELLOW}Check logs/ for details{Style.RED}                  ║
-╚══════════════════════════════════════════════╝{Style.RESET}
-"""
+
+def _vwidth(s):
+    return _ANSI_RE.sub("", s).__len__()
+
+
+def _figlet(text, font):
+    try:
+        import pyfiglet
+        return pyfiglet.figlet_format(text, font=font)
+    except ImportError:
+        return text + "\n"
+
+
+def _box(banner, inner_lines, border_color=Style.CYAN):
+    lines = banner.rstrip("\n").split("\n")
+    max_w = max((_vwidth(l) for l in lines), default=40)
+    inner_w = max_w + 6
+    C, W, B, G, D, R = border_color, Style.WHITE, Style.BOLD, Style.GRAY, Style.DIM, Style.RESET
+
+    out = [f"{C}╔{'═' * inner_w}╗{R}"]
+    out.append(f"{C}║{' ' * inner_w}║{R}")
+    for line in lines:
+        out.append(f"{C}║   {W}{B}{line}{R}{' ' * (inner_w - 3 - _vwidth(line))}{C}║{R}")
+    out.append(f"{C}║{' ' * inner_w}║{R}")
+    for item in inner_lines:
+        out.append(f"{C}║{R}  {item}{' ' * (inner_w - 2 - _vwidth(item))}{C}║{R}")
+    out.append(f"{C}║{' ' * inner_w}║{R}")
+    out.append(f"{C}╚{'═' * inner_w}╝{R}")
+    return "\n".join(out)
 
 
 def print_splash():
-    print(LOGO)
+    banner = _figlet("IRIS AI", "slant")
+    print()
+    print(_box(banner, [
+        f"{Style.GRAY}Brawl Stars Automation Bot{Style.RESET}          {Style.GRAY}v2.0.0{Style.RESET}",
+        f"{Style.DIM}github.com/rarebinary/IrisAI{Style.RESET}",
+    ]))
+    print()
 
 
 def print_crash_banner():
-    print(_CRASH_BANNER)
+    banner = _figlet("CRASH", "doom")
+    print()
+    print(_box(banner, [
+        f"{Style.YELLOW}Check logs/ for details{Style.RESET}",
+    ], border_color=Style.RED))
+    print()
 
 
 def setup_session_logging():
