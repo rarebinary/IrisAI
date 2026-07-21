@@ -1,1 +1,50 @@
-{"name": "Team Follow", "description": "Follows nearest teammate when no enemies visible. Safe positioning for support and thrower brawlers.", "brawlers": ["all"], "gamemodes": ["all"], "author": "Official", "date": "2026-07-20"}
+{"name": "Team Follow", "description": "Follows the nearest teammate. Attacks enemies that come in range. Good for support brawlers.", "brawlers": ["support", "healer"], "gamemodes": ["gem_grab", "brawl_ball", "hot_zone", "knockout", "duo_showdown"], "author": "Official", "date": "2026-07-20"}
+brawler_info = brawlers_info.get(brawler)
+if not brawler_info:
+    raise ValueError(f"Brawler '{brawler}' not found in brawlers info.")
+must_brawler_hold_attack = must_brawler_hold_attack(brawler, brawlers_info)
+if must_brawler_hold_attack and persistent_data["time_since_holding_attack"] is not None and time.time() - persistent_data["time_since_holding_attack"] >= brawler_info['hold_attack'] + seconds_to_hold_attack_after_reaching_max:
+    attack(touch_up=True, touch_down=False)
+    persistent_data["time_since_holding_attack"] = None
+
+safe_range, attack_range, super_range = get_brawler_range(brawler)
+player_pos = get_entity_pos(player_data)
+if debug: print("found player pos:", player_pos)
+if is_there_teammate(teammates_data):
+    teammate_coords, teammate_distance = find_closest_teammate(teammates_data, player_pos)
+else:
+    teammate_coords = None
+if is_there_enemy(enemy_data):
+    enemy_coords, enemy_distance = find_closest_enemy(enemy_data, player_pos, walls)
+else:
+    enemy_coords = None
+
+if teammate_coords is None:
+    if enemy_coords is None:
+        movement = (0, -JOYSTICK_RADIUS)
+    else:
+        direction_x = enemy_coords[0] - player_pos[0]
+        direction_y = enemy_coords[1] - player_pos[1]
+        if enemy_distance > safe_range:
+            movement = (direction_x, direction_y)
+        else:
+            movement = (-direction_x, -direction_y)
+else:
+    direction_x = teammate_coords[0] - player_pos[0]
+    direction_y = teammate_coords[1] - player_pos[1]
+    movement = (direction_x, direction_y)
+
+if enemy_coords is not None and enemy_distance <= attack_range:
+    enemy_hittable = is_enemy_hittable(player_pos, enemy_coords, walls, "attack")
+    if enemy_hittable:
+        if is_gadget_ready:
+            use_gadget()
+        if not must_brawler_hold_attack:
+            attack()
+        else:
+            if persistent_data["time_since_holding_attack"] is None:
+                persistent_data["time_since_holding_attack"] = time.time()
+                attack(touch_up=False, touch_down=True)
+            elif time.time() - persistent_data["time_since_holding_attack"] >= brawlers_info[brawler]['hold_attack']:
+                attack(touch_up=True, touch_down=False)
+                persistent_data["time_since_holding_attack"] = None

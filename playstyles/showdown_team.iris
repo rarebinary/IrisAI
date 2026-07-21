@@ -1,1 +1,72 @@
-{"name": "Showdown Team", "description": "Trio Showdown: follows teammates, avoids gas, group positioning for team fights.", "brawlers": ["all"], "gamemodes": ["trio_showdown"], "author": "Official", "date": "2026-07-20"}
+{"name": "Showdown Team", "description": "Team-oriented showdown playstyle. Sticks with teammates, shares aggro, retreats when outnumbered.", "brawlers": ["all"], "gamemodes": ["duo_showdown", "solo_showdown"], "author": "Official", "date": "2026-07-20"}
+brawler_info = brawlers_info.get(brawler)
+if not brawler_info:
+    raise ValueError(f"Brawler '{brawler}' not found in brawlers info.")
+must_brawler_hold_attack = must_brawler_hold_attack(brawler, brawlers_info)
+if must_brawler_hold_attack and persistent_data["time_since_holding_attack"] is not None and time.time() - persistent_data["time_since_holding_attack"] >= brawler_info['hold_attack'] + seconds_to_hold_attack_after_reaching_max:
+    attack(touch_up=True, touch_down=False)
+    persistent_data["time_since_holding_attack"] = None
+
+safe_range, attack_range, super_range = get_brawler_range(brawler)
+player_pos = get_entity_pos(player_data)
+if debug: print("found player pos:", player_pos)
+
+if is_there_teammate(teammates_data):
+    teammate_coords, teammate_distance = find_closest_teammate(teammates_data, player_pos)
+else:
+    teammate_coords = None
+
+if is_there_enemy(enemy_data):
+    closest_enemy, enemy_distance = find_closest_enemy(enemy_data, player_pos, walls)
+else:
+    closest_enemy = None
+    enemy_distance = float('inf')
+
+enemies_nearby = count_enemies_in_area(enemy_data, player_pos, safe_range * 2)
+
+if enemies_nearby >= 2 and teammate_coords is not None:
+    direction_x = teammate_coords[0] - player_pos[0]
+    direction_y = teammate_coords[1] - player_pos[1]
+    movement = (direction_x, direction_y)
+elif closest_enemy is not None:
+    direction_x = closest_enemy[0] - player_pos[0]
+    direction_y = closest_enemy[1] - player_pos[1]
+    if enemy_distance > safe_range:
+        movement = (direction_x, direction_y)
+    else:
+        movement = (-direction_x, -direction_y)
+elif teammate_coords is not None:
+    direction_x = teammate_coords[0] - player_pos[0]
+    direction_y = teammate_coords[1] - player_pos[1]
+    if abs(direction_x) > 50 or abs(direction_y) > 50:
+        movement = (int(direction_x / abs(direction_x) * JOYSTICK_RADIUS) if abs(direction_x) > 50 else 0,
+                    int(direction_y / abs(direction_y) * JOYSTICK_RADIUS) if abs(direction_y) > 50 else 0)
+    else:
+        movement = (0, 0)
+else:
+    direction_x = center[0] - player_pos[0]
+    direction_y = center[1] - player_pos[1]
+    movement = (direction_x, direction_y)
+
+if closest_enemy is not None and enemy_distance <= attack_range:
+    enemy_hittable = is_enemy_hittable(player_pos, closest_enemy, walls, "attack")
+    if enemy_hittable:
+        if is_gadget_ready and persistent_data["time_since_holding_attack"] is None:
+            use_gadget()
+        if is_super_ready and persistent_data["time_since_holding_attack"] is None:
+            super_type = brawler_info['super_type']
+            if (enemy_distance <= super_range
+                    or super_type in ["spawnable", "other"]
+                    or (brawler in ["stu", "surge"] and super_type == "charge" and enemy_distance <= super_range + attack_range)):
+                if is_hypercharge_ready:
+                    use_hypercharge()
+                use_super()
+        if not must_brawler_hold_attack:
+            attack()
+        else:
+            if persistent_data["time_since_holding_attack"] is None:
+                persistent_data["time_since_holding_attack"] = time.time()
+                attack(touch_up=False, touch_down=True)
+            elif time.time() - persistent_data["time_since_holding_attack"] >= brawlers_info[brawler]['hold_attack']:
+                attack(touch_up=True, touch_down=False)
+                persistent_data["time_since_holding_attack"] = None
