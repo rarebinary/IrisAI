@@ -24,11 +24,17 @@ iris_main(discord_bot, queue_data, stop_event, runtime_control)
   └── Main.main() loop
 ```
 
+### Entry Point (`main()` at module level)
+1. Print splash screen (ASCII art logo with cyan box)
+2. Set up session logging via `terminal_ui.setup_session_logging()` — all stdout/stderr tee'd to `logs/session_<timestamp>.log`
+3. Start Flask web UI on first available port (5185+)
+4. Install `sys.excepthook` to show crash banner on unhandled exceptions
+
 ### Main.main() Loop
 1. If state == "lobby": check stop/pause signals (honored only in lobby)
 2. Auto-pick first brawler if not yet picked (on failure, rotate to end of queue and retry; max 3 "stuck" retries before continuing with current selection)
 3. Enforce `run_for_minutes` timer (3min cooldown after target expires)
-4. Print IPS every second
+4. Print status line every second (~1 IPS): `IPS | Brawler | State | Trophies | Playstyle | Session Time` via `build_status_line()`
 5. Periodically check for BS crashes via `device.app_current()`
 6. Get latest frame; if stale >15s → release movement, reconnect scrcpy; if >30s → restart BS
 7. Call `manage_time_tasks(frame)`:
@@ -485,3 +491,32 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
 - **Auth**: `get_auth_state()` / `validate_login()` — API key validation
 - **Bootstrap**: `get_bootstrap_payload()` — all data for initial page load
 - **Startup**: load queue from saved file if `auto_load_queue_on_startup=True`
+
+---
+
+## terminal_ui.py — Terminal UI (Splash, Dashboard, Logging)
+
+**Standalone module** — no dependencies on other project modules (only `os`, `sys`, `time`, `datetime`).
+
+### Components
+
+| Function | Purpose |
+|----------|---------|
+| `print_splash()` | Prints IrisAI ASCII logo (cyan box, white bold title, dim GitHub link) |
+| `print_crash_banner()` | Prints bold red "BOT CRASHED" banner with link to logs |
+| `setup_session_logging()` | Tee's `sys.stdout`/`sys.stderr` to both console and `logs/session_<timestamp>.log`. Sets up `LOG_DIR` if missing. Returns log path. |
+| `build_status_line(...)` | Builds a color-formatted status string: `IPS │ Brawler │ State │ Trophies │ Playstyle │ Session Time`. Used in `Main.main()` loop, updates in-place via `\r`. |
+
+### Style Class
+
+ANSI escape code constants for 24-bit terminal colors:
+- `CYAN`, `WHITE`, `GRAY`, `GREEN`, `RED`, `YELLOW`, `MAGENTA`, `BLUE`
+- `BOLD`, `DIM`, `RESET`, `CLEAR_LINE`
+
+### Session Logging
+
+- All output goes to `logs/session_<timestamp>.log` (rotated per launch)
+- `*.log` and `logs/` are gitignored
+- Disable with `IRIS_LOG=0` env var
+- Crash banner shown via `sys.excepthook` override + try/except around `app.run()`
+- `KeyboardInterrupt` passes through without crash banner

@@ -27,6 +27,9 @@ debug_clips/
 .DS_Store
 Thumbs.db
 
+# Session logs
+logs/
+
 # Runtime data
 latest_brawler_data.json
 cfg/match_history.csv

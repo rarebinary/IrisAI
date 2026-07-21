@@ -43,6 +43,7 @@ from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url,
 from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint
 from window_controller import WindowController
 from webui import create_app
+from terminal_ui import print_splash, setup_session_logging, print_crash_banner, build_status_line, Style
 
 
 def apply_play_order(queue_data):
@@ -118,6 +119,7 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             print("Initialization complete, starting main loop.")
             self.picked_first_brawler = False
             self.brawler_selection_stuck_count = 0
+            self.current_playstyle_name = self.playstyle_info.get("name", current_playstyle.replace(".iris", ""))
             self.time_since_checked_if_brawl_stars_crashed = time.time()
             self.check_if_brawl_stars_crashed_timer = get_config("cfg/time_tresholds.toml", "check_if_brawl_stars_crashed", 20)
             self.ping_when_stuck = get_config("cfg/webhook_config.toml", "ping_when_stuck", True)
@@ -374,7 +376,15 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                 if abs(s_time - t_now) > 1:
                     elapsed = t_now - s_time
                     if elapsed > 0:
-                        print(f"{c / elapsed:.2f} IPS")
+                        ips = c / elapsed
+                        bd = self.Stage_manager.brawlers_pick_data[0] if self.Stage_manager.brawlers_pick_data else {}
+                        bname = bd.get("brawler", "?")
+                        tro = bd.get("trophies", "?")
+                        st = self.get_latest_state() or "?"
+                        w_streak = self.Stage_manager.Trophy_observer.win_streak if hasattr(self.Stage_manager, "Trophy_observer") else None
+                        wins = self.Stage_manager.Trophy_observer.current_wins if hasattr(self.Stage_manager, "Trophy_observer") else None
+                        sess = time.strftime("%H:%M:%S", time.gmtime(t_now - self.start_time))
+                        print("\r" + build_status_line(ips, bname, st, tro, self.current_playstyle_name, sess, wins, w_streak) + Style.CLEAR_LINE, end="")
                     s_time = t_now
                     c = 0
 
@@ -487,14 +497,35 @@ def cli_entry_point():
 
 
 def main():
-    print("Starting IrisAI, the best free and open source brawl stars bot")
+    if sys.stdout.isatty():
+        print_splash()
+    else:
+        print("IrisAI — Brawl Stars Automation Bot")
+    log_path = setup_session_logging() if os.environ.get("IRIS_LOG") != "0" else None
+    if log_path:
+        print(f"Session log → {log_path}")
     print("The only official discord is", get_discord_link())
+
     port = find_open_port()
     app = create_app(iris_main, start_discord_bot=True)
     local_url = f"http://127.0.0.1:{port}"
-    print(f"Starting IrisAI web UI at {local_url}")
+    print(f"Web UI → {local_url}")
     open_browser_later(local_url)
-    app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+
+    sys.excepthook = _global_exception_handler
+    try:
+        app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+    except Exception:
+        print_crash_banner()
+        raise
+
+
+def _global_exception_handler(exctype, value, tb):
+    if issubclass(exctype, KeyboardInterrupt):
+        sys.__excepthook__(exctype, value, tb)
+        return
+    print_crash_banner()
+    sys.__excepthook__(exctype, value, tb)
 
 
 if __name__ == "__main__":
