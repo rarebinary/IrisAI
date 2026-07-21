@@ -127,7 +127,7 @@ class Play:
         return True
 
     def attack(self, touch_up=True, touch_down=True):
-        self.window_controller.press("attack", delay=0.001, touch_up=touch_up, touch_down=touch_down)
+        self.window_controller.press("attack", touch_up=touch_up, touch_down=touch_down)
 
     def use_hypercharge(self):
         print("Using hypercharge")
@@ -564,8 +564,8 @@ class Play:
                 'last_movement': self.last_movement,
                 'last_movement_change_time': self.last_movement_change_time,
                 'seconds_to_hold_attack_after_reaching_max': self.seconds_to_hold_attack_after_reaching_max,
-                "width": self.window_controller.width,
-                "height": self.window_controller.height,
+                "width": brawl_stars_width,
+                "height": brawl_stars_height,
                 'find_closest_enemy': self.find_closest_enemy,
                 'find_closest_teammate': self.find_closest_teammate,
                 'is_there_poison_gas': self.is_there_poison_gas,
@@ -750,13 +750,8 @@ class Play:
         current_time = time.time()
         state = main.get_latest_state()
 
-        if state != "match":
-            data = None
-            self.publish_debug_view(frame, data, state)
-            return
-
         with self._cache_lock:
-            if frame_time > 0 and frame_time == self._last_frame_time and self._last_data_cache is not None:
+            if state == "match" and frame_time > 0 and frame_time == self._last_frame_time and self._last_data_cache is not None:
                 data = self._last_data_cache
                 self.publish_debug_view(frame, data, state)
                 movement = self.loop(brawler, data, current_time)
@@ -794,6 +789,8 @@ class Play:
         self.track_no_detections(data)
         if data:
             self.time_since_player_last_found = time.time()
+            if state != "match":
+                data = None
 
         if not data:
             if current_time - self.time_since_player_last_found > 1.0:

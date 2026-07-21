@@ -1,3 +1,4 @@
+import ast
 import hashlib
 import html
 import io
@@ -694,12 +695,44 @@ SAFE_GLOBALS = {
 }
 
 
+def is_safe_ast(code_str):
+    try:
+        tree = ast.parse(code_str)
+    except SyntaxError as e:
+        return False, f"Syntax Error: {e}"
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if node.attr.startswith('_'):
+                return False, f"Access to private/dunder attribute '{node.attr}' is forbidden."
+
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            return False, "Imports are not allowed in playstyle scripts."
+
+        if isinstance(node, ast.Name):
+            if node.id in {'exec', 'eval', 'compile', 'getattr', 'setattr', 'delattr', '__import__'}:
+                return False, f"Call to '{node.id}' is forbidden."
+
+    return True, None
+
+
 def interpret_iris_code(iris_code, context):
     safe_globals = SAFE_GLOBALS.copy()
     safe_globals.update(context)
+    safe_globals['__builtins__'] = {}
 
     try:
-        exec(iris_code, safe_globals)
+        if isinstance(iris_code, str):
+            is_safe, error_msg = is_safe_ast(iris_code)
+            if not is_safe:
+                print(f"Security validation failed for .iris script: {error_msg}")
+                return None, safe_globals
+            compiled_code = compile(iris_code, '<string>', 'exec')
+        else:
+            compiled_code = iris_code
+
+        if compiled_code is not None:
+            exec(compiled_code, safe_globals)
     except Exception as e:
         print(f"Error executing .iris code")
         traceback.print_exc()

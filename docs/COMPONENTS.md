@@ -26,8 +26,9 @@ iris_main(discord_bot, queue_data, stop_event, runtime_control)
 
 ### Entry Point (`main()` at module level)
 1. Print splash screen (ASCII art logo with cyan box)
-2. Set up session logging via `terminal_ui.setup_session_logging()` — all stdout/stderr tee'd to `logs/session_<timestamp>.log`
+2. Set up session logging via `terminal_ui.setup_session_logging()` — logs go to `logs/session_<timestamp>.log` only (not duplicated to terminal); terminal shows splash + live status bar + crash banner only
 3. Start Flask web UI on first available port (5185+)
+4. Flask werkzeug HTTP logging suppressed (`logging.ERROR`) to avoid log spam in terminal
 4. Install `sys.excepthook` to show crash banner on unhandled exceptions
 
 ### Main.main() Loop
@@ -79,15 +80,16 @@ The core in-game behavior system. All entity detection, movement, and combat log
 
 ```
 Play.main(frame, brawler, main, frame_time=0.0)
-  ├── Skip if state != "match"
-  ├── Dedup if frame_time unchanged (reuse last cache via _last_data_cache)
+  ├── Dedup if state=="match" and frame_time unchanged (reuse cache)
+  ├── Always run detection (main + tile) regardless of state
   ├── Parallel inference (ThreadPoolExecutor with 2 workers):
   │   ├── get_main_data() — entity YOLO detection
   │   └── get_tile_data() — wall/bush detection (only if due, and not centered mode)
   ├── Process tile data → separate walls from bushes
   ├── Validate game data, track no-detection timers
-  ├── If data invalid (no player): release movement, check no_detection_proceed delay,
-  │   may press "proceed" or re-detect state
+  ├── If state != "match": null data (so no movement/combat outside match)
+  ├── If data invalid: gentle movement, check no_detection_proceed delay,
+  │   may press "proceed" or re-detect state (PylaAI original behavior)
   ├── Check super/gadget/hypercharge readiness (HSV pixel counting in crops, at intervals)
   ├── Check poison gas (HSV masking around player, returns directional dict)
   └── Play.loop(brawler, data, current_time)
@@ -96,6 +98,11 @@ Play.main(frame, brawler, main, frame_time=0.0)
         ├── interpret_iris_code() → movement (x,y)
         └── unstuck_movement_if_needed(movement) → rotated vector if stuck
 ```
+
+**PylaAI compat note:** Unlike the original, data is nulled AFTER detection (not before), so
+detection always runs even in non-match states. The proceed/no-detection fallback from
+PylaAI is preserved. Frame dedup only triggers when `state=="match"` to avoid stale
+data across state transitions.
 
 ### Detection Systems
 
@@ -523,8 +530,20 @@ ANSI escape code constants for 24-bit terminal colors:
 
 ### Session Logging
 
-- All output goes to `logs/session_<timestamp>.log` (rotated per launch)
+- All output goes to `logs/session_<timestamp>.log` (rotated per launch) via FileLogger (not Tee)
+- Terminal shows only splash + live status bar + crash banner (via `_tty()` which uses `sys.__stdout__`)
+- `print()` and logging go to file only — no terminal echo
 - `*.log` and `logs/` are gitignored
 - Disable with `IRIS_LOG=0` env var
 - Crash banner shown via `sys.excepthook` override + try/except around `app.run()`
 - `KeyboardInterrupt` passes through without crash banner
+
+### PylaAI Critical Bugfixes (2026-07-21)
+
+| # | File | Issue | Fix |
+|---|------|-------|-----|
+| 1 | `play.py:attack()` | `delay=0.001` was too fast for ADB/scrcpy; game didn't register taps | Removed explicit delay, uses `press()` default `0.02` |
+| 2 | `window_controller.py:click()` | Default delay `0.005` (vs PylaAI's `0.02`) made all clicks too fast | Restored `delay=0.02` |
+| 3 | `play.py:loop()` context | Provided dynamic `width`/`height` (actual framebuffer res) instead of constants `1920×1080` | Now uses `brawl_stars_width`/`brawl_stars_height` constants |
+| 4 | `play.py:main()` early return | `if state != "match": return` skipped detection + proceed fallback entirely | Moved state check after detection (PylaAI original pattern); data is nulled after inference, not before |
+| 5 | `utils.py:interpret_iris_code()` | No `is_safe_ast()` validation, no `__builtins__={}` sandbox | Added AST security check + builtins hardening

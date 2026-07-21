@@ -355,7 +355,7 @@ class WindowController:
                 self.are_we_moving = False
                 self.last_joystick_pos = (None, None)
 
-    def click(self, x: int, y: int, delay=0.005, already_include_ratio=True, touch_up=True, touch_down=True):
+    def click(self, x: int, y: int, delay=0.02, already_include_ratio=True, touch_up=True, touch_down=True):
         if not already_include_ratio:
             x = x * self.width_ratio
             y = y * self.height_ratio
