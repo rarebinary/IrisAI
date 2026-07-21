@@ -502,12 +502,18 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
 
 | Function | Purpose |
 |----------|---------|
-| `print_splash()` | Prints IrisAI ASCII logo (cyan box, white bold title, dim GitHub link) |
+| `print_splash()` | Prints IrisAI ASCII logo (cyan box, red→yellow gradient title via `_apply_gradient()`) |
 | `print_crash_banner()` | Prints bold red "BOT CRASHED" banner with link to logs |
 | `setup_session_logging()` | Tee's `sys.stdout`/`sys.stderr` to both console and `logs/session_<timestamp>.log`. Sets up `LOG_DIR` if missing. Returns log path. |
 | `build_status_line(...)` | Builds a color-formatted status string: `IPS │ Brawler │ State │ Trophies │ Playstyle │ Session Time` |
 | `save_status_cursor()` | Saves cursor position with `\033[s` before main loop starts |
-| `update_status(...)` | Restores to saved cursor via `\033[u`, clears to end of screen via `\033[J`, prints status. Handles terminal resize without artifacts (old `\r` approach left wrapped lines visible). |
+| `update_status(...)` | Restores to saved cursor via `\033[u`, clears to end of screen via `\033[J`, prints status with animated red→yellow gradient (shifts 3px/sec via `_gradient_offset`). Handles terminal resize without artifacts. |
+
+### Animated Gradient
+
+- `_apply_gradient(text, offset=0)` — Per-character red→yellow gradient. Each character gets `\033[38;2;255;{g};0m` where `g = int(255 * ((i + offset) % w) / w)`. Applied to both the ASCII logo in the splash box and the dashboard status line.
+- `_gradient_offset` — Module-level counter incremented by `_SHIFT_SPEED = 3` each call to `update_status()`. Creates smooth scrolling animation (full cycle ~19s for 58-char logo).
+- Cache: `_figlet_cache` stores raw figlet output by `(text, font)` key to avoid re-rendering on each splash redraw.
 
 ### Style Class
 
