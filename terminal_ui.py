@@ -54,20 +54,20 @@ def _box(banner, inner_lines, border_color=Style.CYAN, pad=3):
         lines = wrapped
     inner_w = max_w + pad * 2
     C, W, B, G, D, R = border_color, Style.WHITE, Style.BOLD, Style.GRAY, Style.DIM, Style.RESET
-    out = [f"{C}╔{'─' * inner_w}╗{R}"]
-    out.append(f"{C}│{' ' * inner_w}│{R}")
+    out = [f"{C}▐{'▀' * inner_w}▌{R}"]
+    out.append(f"{C}▐{' ' * inner_w}▌{R}")
     for line in lines:
         vw = _vwidth(line)
         if vw > max_w:
             line = line[:max_w]
             vw = max_w
-        out.append(f"{C}│{' ' * pad}{W}{B}{line}{R}{' ' * (inner_w - pad - vw)}{C}│{R}")
-    out.append(f"{C}│{' ' * inner_w}│{R}")
+        out.append(f"{C}▐{' ' * pad}{W}{B}{line}{R}{' ' * (inner_w - pad - vw)}{C}▌{R}")
+    out.append(f"{C}▐{' ' * inner_w}▌{R}")
     for item in inner_lines:
         vw = _vwidth(item)
-        out.append(f"{C}│{R}  {item}{' ' * (inner_w - 2 - vw)}{C}│{R}")
-    out.append(f"{C}│{' ' * inner_w}│{R}")
-    out.append(f"{C}╚{'─' * inner_w}╝{R}")
+        out.append(f"{C}▐{R}  {item}{' ' * (inner_w - 2 - vw)}{C}▌{R}")
+    out.append(f"{C}▐{' ' * inner_w}▌{R}")
+    out.append(f"{C}▐{'▄' * inner_w}▌{R}")
     return "\n".join(out)
 
 
