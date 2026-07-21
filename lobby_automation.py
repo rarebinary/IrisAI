@@ -2,6 +2,7 @@ import time
 
 import cv2
 from config_loader import get_config
+from state_finder import is_in_brawler_selection, is_in_lobby
 from utils import (
     EasyOCRInitializationError,
     count_hsv_pixels,
@@ -66,6 +67,7 @@ class LobbyAutomation:
                 print("Brawler selection aborted by user.")
                 return "aborted"
             screenshot = self.window_controller.screenshot()
+            full_res = screenshot.copy()
             screenshot = cv2.resize(screenshot, (int(screenshot.shape[1] * self.ocr_scale_down_factor), int(screenshot.shape[0] * self.ocr_scale_down_factor)), interpolation=cv2.INTER_AREA)
 
             print("Extracting text on current screen...")
@@ -88,7 +90,11 @@ class LobbyAutomation:
                 clean_results[key.lower()] = results[orig_key]
 
             current_state = get_latest_state()
-            if "shop" in clean_results.keys():
+            on_brawler_selection = is_in_brawler_selection(full_res)
+            in_lobby = is_in_lobby(full_res)
+            if on_brawler_selection:
+                pass
+            elif in_lobby or "shop" in clean_results.keys():
                 print("Latest screenshot is still of the lobby, waiting for the frame to update...")
                 shop_counter += 1
                 if shop_counter > 5:
@@ -98,10 +104,11 @@ class LobbyAutomation:
             elif current_state != "brawler_selection":
                 print("Latest screenshot is no longer of the lobby, aborting brawler selection...")
                 return "stuck"
-            elif brawler in clean_results.keys():
+
+            matched_key = None
+            if brawler in clean_results.keys():
                 matched_key = brawler
             else:
-                matched_key = None
                 for detected_name in clean_results.keys():
                     if detected_name in self.all_brawlers_names[brawler]:
                         matched_key = detected_name

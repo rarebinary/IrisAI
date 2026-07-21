@@ -26,7 +26,7 @@ iris_main(discord_bot, queue_data, stop_event, runtime_control)
 
 ### Main.main() Loop
 1. If state == "lobby": check stop/pause signals (honored only in lobby)
-2. Auto-pick first brawler if not yet picked (on failure, rotate to end of queue and retry)
+2. Auto-pick first brawler if not yet picked (on failure, rotate to end of queue and retry; max 3 "stuck" retries before continuing with current selection)
 3. Enforce `run_for_minutes` timer (3min cooldown after target expires)
 4. Print IPS every second
 5. Periodically check for BS crashes via `device.app_current()`
@@ -298,12 +298,16 @@ States and their handlers (from `self.states` dict):
    - Take screenshot, downsize by `ocr_scale_down_factor` (clamped 0.5-1.0, from `general_config.toml`)
    - Run EasyOCR via `extract_text_and_positions()`
    - Clean up OCR results (remove spaces/dots/hyphens)
-   - Check if state changed from brawler_selection (handle shop popups, stuck states)
+   - Run **template matching** on full-resolution screenshot (`is_in_brawler_selection`, `is_in_lobby` from `state_finder`) to determine actual screen state
+   - If template confirms brawler_selection → proceed with OCR matching regardless of OCR text
+   - Else if template says lobby OR OCR detects "shop" text → retry (screen may not have updated, up to 6 attempts then return "stuck")
+   - Else if background state checker says not brawler_selection → abort
    - Match brawler name directly or via aliases from `cfg/names.json`
    - On match: click on detected text center (with y-offset), click "select" button
    - Scroll down via swipe (first scroll: short 850px; subsequent: full 650px)
 3. Returns: `"success"`, `"failed"`, `"error"`, `"aborted"`, or `"stuck"`
 4. Supports interruptible sleep with stop/pause checking
+5. In `main.py`, if `select_brawler` returns "stuck" 3+ times, the bot skips auto-pick and continues with the current brawler selection (prevents infinite retry loops)
 
 ### check_for_idle()
 - Crops center area `(460..1460, 400..675)`

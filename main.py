@@ -117,6 +117,7 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.start_state_checker()
             print("Initialization complete, starting main loop.")
             self.picked_first_brawler = False
+            self.brawler_selection_stuck_count = 0
             self.time_since_checked_if_brawl_stars_crashed = time.time()
             self.check_if_brawl_stars_crashed_timer = get_config("cfg/time_tresholds.toml", "check_if_brawl_stars_crashed", 20)
             self.ping_when_stuck = get_config("cfg/webhook_config.toml", "ping_when_stuck", True)
@@ -341,6 +342,10 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                             select_brawler = self.lobby_automator.select_brawler(next_brawler_name, self.get_latest_state, runtime_control=self.runtime_control)
 
                         if select_brawler == "aborted" or select_brawler == "stuck":
+                            self.brawler_selection_stuck_count += 1
+                            if self.brawler_selection_stuck_count >= 3:
+                                print("Brawler selection stuck too many times — continuing with current selection.")
+                                self.picked_first_brawler = True
                             continue
                         self.picked_first_brawler = True
                         self.update_trophy_observer()

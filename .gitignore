@@ -27,6 +27,20 @@ debug_clips/
 .DS_Store
 Thumbs.db
 
+# Runtime data
+latest_brawler_data.json
+cfg/match_history.csv
+
+# Debug
+debug_frames/
+graphify-out/
+
+# opencode
+.opencode/
+CLAUDE.md
+opencode.json
+session-context.md
+
 # Build
 dist/
 PylaAI.app/
