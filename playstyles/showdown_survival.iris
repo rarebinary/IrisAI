@@ -1,18 +1,10 @@
-{"name": "Showdown Survival", "description": "Survival-focused playstyle for solo showdown. Avoids enemies, collects power cubes, stays near center.", "brawlers": ["all"], "gamemodes": ["solo_showdown", "duo_showdown"], "author": "Official", "date": "2026-07-20"}
-def choose_target(enemy_data, powercube_data, player_pos, walls, safe_range):
+{"name": "Showdown Survival", "description": "Survival-focused playstyle for showdown. Avoids close enemies and returns toward map center when clear.", "brawlers": ["all"], "gamemodes": ["solo_showdown", "duo_showdown"], "author": "Official", "date": "2026-07-20"}
+def choose_target(enemy_data, player_pos, walls, safe_range):
     if is_there_enemy(enemy_data):
         enemy_coords, enemy_distance = find_closest_enemy(enemy_data, player_pos, walls, "attack")
-        if enemy_distance <= safe_range:
-            return "attack", enemy_coords, enemy_distance
-    if is_there_powercube(powercube_data):
-        cube_coords, cube_distance = find_closest_powercube(powercube_data, player_pos)
-        if cube_coords is not None:
-            return "powercube", cube_coords, cube_distance
-    if is_there_powercube(powercube_data):
-        cube_coords, cube_distance = find_closest_powercube(powercube_data, player_pos)
-        if cube_coords is not None:
-            return "powercube", cube_coords, cube_distance
-    return None, None, None
+        if enemy_coords is not None and enemy_distance <= safe_range:
+            return enemy_coords, enemy_distance
+    return None, None
 
 brawler_info = brawlers_info.get(brawler)
 if not brawler_info:
@@ -26,19 +18,13 @@ safe_range, attack_range, super_range = get_brawler_range(brawler)
 player_pos = get_entity_pos(player_data)
 if debug: print("found player pos:", player_pos)
 
-target_type, target_coords, target_distance = choose_target(enemy_data, powercube_data, player_pos, walls, safe_range)
+target_coords, target_distance = choose_target(enemy_data, player_pos, walls, safe_range)
 
-if target_type is None or target_coords is None:
+if target_coords is None:
     direction_x = center[0] - player_pos[0]
     direction_y = center[1] - player_pos[1]
     movement = (direction_x, direction_y)
-elif target_type == "powercube":
-    direction_x = target_coords[0] - player_pos[0]
-    direction_y = target_coords[1] - player_pos[1]
-    movement = (direction_x, direction_y)
-    if is_gadget_ready and persistent_data["time_since_holding_attack"] is None:
-        use_gadget()
-elif target_type == "attack":
+else:
     direction_x = target_coords[0] - player_pos[0]
     direction_y = target_coords[1] - player_pos[1]
     if target_distance > safe_range:

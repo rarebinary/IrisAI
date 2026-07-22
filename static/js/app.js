@@ -18,15 +18,15 @@ const GAMEMODE_LABELS = {
 const AUTH_ERROR_COPY = {
     MISSING_API_KEY: {
         title: "API key required",
-        detail: "Generate one in Discord with /generate_key using PylaBot.",
+        detail: "Enter the API key supplied by your configured integration provider.",
     },
     MISSING_HWID: {
         title: "Device ID missing",
-        detail: "The app could not send this device ID. Restart PylaAI and check the Python logs if it repeats.",
+        detail: "The app could not send this device ID. Restart IrisAI and check the Python logs if it repeats.",
     },
     MISSING_BUILD_TIMESTAMP: {
         title: "Build timestamp missing",
-        detail: "The app could not build a complete auth request. Restart PylaAI and check the Python logs if it repeats.",
+        detail: "The app could not build a complete auth request. Restart IrisAI and check the Python logs if it repeats.",
     },
     INVALID_BUILD_TIMESTAMP: {
         title: "Build timestamp invalid",
@@ -34,11 +34,11 @@ const AUTH_ERROR_COPY = {
     },
     MISSING_BUILD_SIGNATURE: {
         title: "Build signature missing",
-        detail: "The app could not sign the auth request. Restart PylaAI and check the Python logs if it repeats.",
+        detail: "The app could not sign the auth request. Restart IrisAI and check the Python logs if it repeats.",
     },
     INVALID_API_KEY: {
         title: "API key not found",
-        detail: "Generate a fresh key with /generate_key using PylaBot, then paste the full key here.",
+        detail: "Check the key supplied by your configured integration provider.",
     },
     IP_MISMATCH: {
         title: "IP address changed",
@@ -70,7 +70,7 @@ const AUTH_ERROR_COPY = {
     },
     LOGIN_CHECK_FAILED: {
         title: "Saved key check failed",
-        detail: "The saved key could not be checked. Try again or generate a fresh key with /generate_key using PylaBot.",
+        detail: "The saved key could not be checked. Verify the configured integration and try again.",
     },
     LOGIN_FAILED: {
         title: "Login failed locally",
@@ -78,7 +78,7 @@ const AUTH_ERROR_COPY = {
     },
     LOGIN_REQUEST_FAILED: {
         title: "Login request failed",
-        detail: "The browser could not reach the local PylaAI web UI login endpoint.",
+        detail: "The browser could not reach the local IrisAI web UI login endpoint.",
     },
 };
 
@@ -101,14 +101,15 @@ const state = {
     playerTagLoading: false,
     runtimePollTimer: null,
     authSubmitting: false,
+    activityTab: "events",
 };
 
 const SETTINGS_META = {
     general: [
         { key: "player_tag", label: "Player Tag", type: "text", placeholder: "#PLAYER", help: "Used to autofill live trophies and win streaks inside the brawler editor. Use your Brawl Stars player tag, not your Supercell ID." },
         { key: "default_trophy_target", label: "Default Trophy Target", type: "number", help: "Default trophy target used when adding a new brawler to the queue." },
-        { key: "run_for_minutes", label: "Run Time", type: "number", suffix: "min", help: "How long Pyla runs before cooldown logic takes over." },
-        { key: "max_ips", label: "Max IPS", type: "text", help: "Processing cap. Use auto if you want Pyla to manage it." },
+        { key: "run_for_minutes", label: "Run Time", type: "number", suffix: "min", help: "How long Iris runs before cooldown logic takes over." },
+        { key: "max_ips", label: "Max IPS", type: "text", help: "Processing cap. Use auto if you want Iris to manage it." },
         { key: "used_threads", label: "Threads", type: "text", help: "Worker thread count. Auto keeps the current behavior." },
         { key: "ocr_scale_down_factor", label: "OCR Scale", type: "number", step: "0.1", help: "Scale factor used before OCR work." },
         { key: "trophies_multiplier", label: "Trophies Multiplier", type: "number", help: "Useful for custom arenas or multiplier-based modes." },
@@ -125,6 +126,8 @@ const SETTINGS_META = {
         { key: "debug_view_fps", label: "Debug View FPS", type: "number", help: "Maximum FPS for the debug window. Lower this if it costs too much performance." },
         { key: "advanced_debug_visuals", label: "Advanced Debug Visuals", type: "checkbox", visibleIf: { key: "debug_view", value: true }, help: "Show hit circles, line-of-sight links, and joystick path sectors in the debug window." },
         { key: "record_debug_preview_clips", label: "Record Debug Preview As Clips", type: "checkbox", visibleIf: { key: "debug_view", value: true }, help: "Save MP4 clips of the debug preview when the player is tracked and then lost." },
+        { key: "debug_capture_max_files", label: "Saved Capture Limit", type: "number", help: "Keep only the newest diagnostic images and clips." },
+        { key: "debug_capture_max_mb", label: "Capture Storage Limit (MB)", type: "number", help: "Remove the oldest diagnostics when this storage limit is reached." },
     ],
     bot: [
         { key: "play_again_on_win", label: "Play Again On Win", type: "checkbox", help: "Chain another match immediately after a win." },
@@ -144,12 +147,12 @@ const SETTINGS_META = {
         { key: "max_consecutive_losses", label: "Max Consecutive Losses", type: "number", help: "Consecutive losses per brawler before auto-switch (0 = disabled)." },
     ],
     timers: [
-        { key: "super", label: "Super Delay", min: 0.1, max: 10, step: 0.1, help: "How often Pyla checks if super is available." },
-        { key: "hypercharge", label: "Hypercharge Delay", min: 0.1, max: 10, step: 0.1, help: "How often Pyla checks if hypercharge is available." },
-        { key: "gadget", label: "Gadget Delay", min: 0.1, max: 10, step: 0.1, help: "How often Pyla checks gadgets." },
+        { key: "super", label: "Super Delay", min: 0.1, max: 10, step: 0.1, help: "How often Iris checks if super is available." },
+        { key: "hypercharge", label: "Hypercharge Delay", min: 0.1, max: 10, step: 0.1, help: "How often Iris checks if hypercharge is available." },
+        { key: "gadget", label: "Gadget Delay", min: 0.1, max: 10, step: 0.1, help: "How often Iris checks gadgets." },
         { key: "wall_detection", label: "Wall Detection", min: 0.1, max: 10, step: 0.1, help: "Wall scan cadence." },
         { key: "no_detection_proceed", label: "Proceed Delay", min: 0.1, max: 10, step: 0.1, help: "Delay before pressing proceed when no detections are found." },
-        { key: "state_check", label: "State Check", min: 0.1, max: 10, step: 0.1, help: "How often Pyla checks the game state." },
+        { key: "state_check", label: "State Check", min: 0.1, max: 10, step: 0.1, help: "How often Iris checks the game state." },
         { key: "idle", label: "Idle Check", min: 0.1, max: 10, step: 0.1, help: "How often idle detection runs." },
         { key: "check_if_brawl_stars_crashed", label: "Crash Check", min: 0.1, max: 10, step: 0.1, help: "How often crash recovery checks run." },
     ],
@@ -157,7 +160,7 @@ const SETTINGS_META = {
         { key: "discord_id", label: "Discord ID", type: "text", help: "Your discord user ID. Required to use a discord bot or be pinged in webhooks." },
         { key: "webhook_url", label: "Webhook URL", type: "url", help: "Discord webhook endpoint used for notifications." },
         { key: "discord_bot_token", label: "Discord Bot Token", type: "password", help: "Discord bot token used for remote control commands. Requires full restart to apply." },
-        { key: "ping_when_stuck", label: "Ping When Stuck", type: "checkbox", help: "Send a ping when Pyla gets stuck." },
+        { key: "ping_when_stuck", label: "Ping When Stuck", type: "checkbox", help: "Send a ping when Iris gets stuck." },
         { key: "ping_when_target_is_reached", label: "Ping On Target", type: "checkbox", help: "Send a ping when a target finishes." },
         { key: "ping_every_x_match", label: "Ping Every X Matches", type: "number", help: "0 disables periodic match pings." },
         { key: "ping_every_x_minutes", label: "Ping Every X Minutes", type: "number", help: "0 disables periodic minute pings." },
@@ -168,13 +171,14 @@ const SETTINGS_META = {
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
+    applyTheme(localStorage.getItem("iris-theme") || "light");
     renderNav();
     bindShellEvents();
 
     try {
         await bootstrap();
     } catch (error) {
-        showToast(error.message || "Unable to load the PylaAI UI.", "error");
+        showToast(error.message || "Unable to load the IrisAI UI.", "error");
     }
 });
 
@@ -206,7 +210,21 @@ function bindShellEvents() {
     });
 
     document.getElementById("authForm")?.addEventListener("submit", handleLogin);
+    document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+        button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
+    });
     bindTooltipEvents();
+}
+
+function applyTheme(theme) {
+    const nextTheme = theme === "dark" ? "dark" : "light";
+    document.documentElement.dataset.theme = nextTheme;
+    localStorage.setItem("iris-theme", nextTheme);
+    document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+        const selected = button.dataset.themeChoice === nextTheme;
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-pressed", String(selected));
+    });
 }
 
 function bindTooltipEvents() {
@@ -220,7 +238,7 @@ function bindTooltipEvents() {
             return;
         }
 
-        tooltip.innerHTML = target.dataset.tooltip;
+        tooltip.textContent = target.dataset.tooltip;
         tooltip.classList.remove("hidden");
     });
 
@@ -303,9 +321,9 @@ function toggleAuthModal() {
         const instructions = document.getElementById("authInstructions");
         if (instructions) {
             if (!auth.early_access) {
-                instructions.innerHTML = "<h1> This screen isn't supposed to appear as an api key is included. Check the logs.</h1>";
+                instructions.textContent = "Authentication is not expected in local mode. Check the IrisAI logs for the configured API endpoint.";
             } else {
-                instructions.innerHTML = "Use <code>/generate_key</code> if you bought via Patreon, or <code>/refresh_key</code> if you bought a temporary key, with PylaBot in #commands, then paste the key here. Your key is handled by Python only and is not rendered back into the UI.";
+                instructions.textContent = "Enter the key supplied by your configured integration provider. The key is handled by Python and is never rendered back into the UI.";
             }
         }
         renderAuthMessage(auth, auth.code ? "error" : "info");
@@ -402,104 +420,214 @@ function renderAlerts() {
 
 function renderDashboard() {
     const view = document.getElementById("view-dashboard");
-    const { links, queue, runtime, auth } = state.bootstrap;
+    const { queue, runtime, auth, history } = state.bootstrap;
     const activePlaystyle = getActivePlaystyle();
+    const currentRun = runtime.current_run || {};
+    const session = runtime.session || {};
+    const sessionLogging = runtime.logging || {};
+    const queueBrawler = queue[0] || {};
+    const brawler = currentRun.brawler || queueBrawler.brawler || "No brawler selected";
+    const trophies = currentRun.trophies ?? queueBrawler.trophies ?? "-";
+    const winStreak = currentRun.win_streak ?? queueBrawler.win_streak ?? 0;
+    const playstyle = currentRun.playstyle || activePlaystyle?.name || "No playstyle selected";
+    const recentMatches = runtime.recent_matches?.length ? runtime.recent_matches : (history.recent_matches || []);
+    const events = state.activityTab === "debug" ? (runtime.debug_events || []) : (runtime.recent_events || []);
     const canStart = queue.length > 0 && !["running", "pausing", "stopping"].includes(runtime.state) && !(auth.required && !auth.authenticated);
     const isPaused = runtime.state === "paused";
     const authBlockCopy = auth.required && !auth.authenticated
         ? formatAuthToast(auth) || auth.message || "Login required before starting."
         : "";
     const statusCopy = runtime.state === "error"
-        ? (runtime.last_error || "Pyla stopped with an error.")
+        ? (runtime.last_error || "Iris stopped with an error.")
         : runtime.state === "pausing"
-            ? "Pause requested. Pyla will stop in the lobby."
+            ? "Pause requested. Iris will pause in the lobby."
             : runtime.state === "stopping"
-                ? "Pyla is shutting down. This should only take a few seconds."
+                ? "Iris is shutting down. This should only take a few seconds."
                 : isPaused
-                    ? "Pyla is paused in the lobby. Press Start to resume."
+                    ? "Iris is paused in the lobby. Press Start to resume."
                     : canStart
-                        ? "Queue is ready. Start PylaAI from here."
+                        ? "Queue is ready. Start IrisAI from here."
                         : authBlockCopy
                             ? authBlockCopy
                             : queue.length
                                 ? "Resolve runtime state before starting."
                             : "Add at least one brawler to the queue before starting.";
 
-    let runtimePanel = `
-        <button id="startRuntimeBtn" class="btn btn-primary btn-huge ${canStart ? "" : "is-disabled"}">
-            ${iconMarkup("play")}
-            <span>Start</span>
-        </button>
-        <p class="runtime-note ${runtime.state === "error" ? "runtime-error" : ""}">${escapeHtml(statusCopy)}</p>
-        ${!queue.length ? '<button id="goToBrawlersBtn" class="btn" style="margin-top: 12px;">Go to Brawlers</button>' : ''}
-    `;
+    let runtimePanel = `<button id="startRuntimeBtn" class="btn btn-primary ${canStart ? "" : "is-disabled"}">${iconMarkup("play")}<span>Start Iris</span></button>`;
 
     if (["running", "pausing"].includes(runtime.state)) {
         runtimePanel = `
-            <div class="runtime-live-shell">
-                <h3 class="runtime-live-title">${runtime.state === "pausing" ? "PylaAI is pausing" : "PylaAI is currently running"}</h3>
-                <p class="runtime-note">${escapeHtml(statusCopy)}</p>
-                <div class="runtime-action-grid">
-                    <button id="pauseRuntimeBtn" class="btn btn-primary btn-runtime-action ${runtime.state === "pausing" ? "is-disabled" : ""}">${iconMarkup("pause")} Pause</button>
-                    <button id="stopRuntimeBtn" class="btn btn-runtime-action">${iconMarkup("stop")} Stop</button>
-                </div>
+            <div class="run-actions">
+                <button id="pauseRuntimeBtn" class="btn ${runtime.state === "pausing" ? "is-disabled" : ""}">${iconMarkup("pause")} Pause</button>
+                <button id="stopRuntimeBtn" class="btn btn-danger">${iconMarkup("stop")} Stop</button>
             </div>
         `;
     } else if (isPaused) {
         runtimePanel = `
-            <div class="runtime-live-shell">
-                <h3 class="runtime-live-title">PylaAI is paused</h3>
-                <p class="runtime-note">${escapeHtml(statusCopy)}</p>
-                <div class="runtime-action-grid">
-                    <button id="resumeRuntimeBtn" class="btn btn-primary btn-runtime-action">${iconMarkup("play")} Start</button>
-                    <button id="stopRuntimeBtn" class="btn btn-runtime-action">${iconMarkup("stop")} Stop</button>
-                </div>
+            <div class="run-actions">
+                <button id="resumeRuntimeBtn" class="btn btn-primary">${iconMarkup("play")} Resume</button>
+                <button id="stopRuntimeBtn" class="btn btn-danger">${iconMarkup("stop")} Stop</button>
             </div>
         `;
     }
 
     view.innerHTML = `
-        <div class="dash-grid">
-            <div class="hero-row">
-                <section class="panel panel-accent start-hero">
-                    <p class="eyebrow">Runtime</p>
-                    ${runtimePanel}
+        <div class="dashboard-shell">
+            <section class="status-strip" aria-label="Runtime status">
+                ${renderStatusItem("Bot", runtimeLabel(runtime), runtime.state === "error" ? "danger" : runtime.is_running ? "success" : "neutral")}
+                ${renderStatusItem("Emulator", currentRun.emulator_status || "Waiting", currentRun.emulator_status === "Connected" ? "success" : "warning")}
+                ${renderStatusItem("Current state", currentRun.current_state || "Unknown", "neutral")}
+                ${renderStatusItem("Playstyle", playstyle, "neutral")}
+            </section>
+
+            ${sessionLogging.enabled ? `
+                <section class="session-log-notice" aria-label="Session logging status">
+                    <span class="session-log-dot" aria-hidden="true"></span>
+                    <div>
+                        <strong>Session logging is on</strong>
+                        <p>Technical output and a session summary will be saved when IrisAI closes.</p>
+                        <code>${escapeHtml(sessionLogging.path || "Log path unavailable")}</code>
+                    </div>
+                </section>
+            ` : ""}
+
+            <div class="dashboard-grid">
+                <section class="run-panel" aria-labelledby="currentRunTitle">
+                    <div class="run-panel-header">
+                        <div>
+                            <p class="eyebrow">Live overview</p>
+                            <h3 id="currentRunTitle">Current Run</h3>
+                        </div>
+                        <div class="run-controls">${runtimePanel}</div>
+                    </div>
+                    <p class="run-status ${runtime.state === "error" ? "is-error" : ""}">${escapeHtml(statusCopy)}</p>
+                    <dl class="run-facts">
+                        ${renderRunFact("Brawler", brawler)}
+                        ${renderRunFact("Trophies", trophies, "numeric")}
+                        ${renderRunFact("Win streak", winStreak, "numeric")}
+                        ${renderRunFact("Playstyle", playstyle)}
+                        ${renderRunFact("Last result", formatResult(currentRun.last_result))}
+                        ${renderRunFact("Session", `${formatDuration(session.duration_seconds)} · ${session.wins || 0}W / ${session.losses || 0}L`, "numeric")}
+                    </dl>
+                    <div class="session-summary" aria-label="Current session statistics">
+                        ${renderSessionStat("Matches", session.matches || 0)}
+                        ${renderSessionStat("Wins", session.wins || 0, "success")}
+                        ${renderSessionStat("Losses", session.losses || 0, "danger")}
+                        ${renderSessionStat("Trophy delta", formatSignedNumber(session.trophy_delta || 0), (session.trophy_delta || 0) < 0 ? "danger" : "success")}
+                    </div>
+                    ${!queue.length ? '<button id="goToBrawlersBtn" class="btn btn-secondary">Add a brawler</button>' : ''}
                 </section>
 
-                <section class="panel act-ps">
-                    <div class="panel-header compact-header">
+                <section class="activity-panel" aria-labelledby="activityTitle">
+                    <div class="activity-header">
                         <div>
-                            <p class="ps-eyebrow">Active Playstyle</p>
-                            <h3>${escapeHtml(activePlaystyle?.name || "No playstyle selected")}</h3>
-                            <p class="meta">${escapeHtml(metaLine(activePlaystyle))}</p>
+                            <p class="eyebrow">Session activity</p>
+                            <h3 id="activityTitle">Recent Events</h3>
                         </div>
-                        <button id="browsePlaystylesBtn" class="btn">Browse</button>
+                        <div class="activity-tabs" role="tablist" aria-label="Activity detail">
+                            <button type="button" role="tab" aria-selected="${state.activityTab === "events"}" class="${state.activityTab === "events" ? "active" : ""}" data-activity-tab="events">Events</button>
+                            <button type="button" role="tab" aria-selected="${state.activityTab === "debug"}" class="${state.activityTab === "debug" ? "active" : ""}" data-activity-tab="debug">Debug logs</button>
+                        </div>
                     </div>
-                    <p class="desc">${escapeHtml(activePlaystyle?.description || "Select a playstyle to surface its brawlers and gamemodes here.")}</p>
-                    ${renderPlaystyleVisual(activePlaystyle, true)}
+                    <div class="event-list" role="log" aria-live="polite">
+                        ${renderEventRows(events, state.activityTab === "debug")}
+                    </div>
                 </section>
             </div>
 
-            <section class="panel support-panel">
-                <div class="support-copy">
+            <section class="matches-panel" aria-labelledby="lastMatchesTitle">
+                <div class="matches-header">
                     <div>
-                        <p class="eyebrow">Community</p>
-                        <h3 class="panel-title support-title">Free, open-source, and actively updated</h3>
-                        <p class="support-lead">Join the Discord for support and news. Patreon is where early-access builds and upcoming versions land first.</p>
+                        <p class="eyebrow">Match record</p>
+                        <h3 id="lastMatchesTitle">Last 10 Matches</h3>
                     </div>
+                    <button id="openHistoryBtn" class="btn btn-secondary">View history</button>
                 </div>
-
-                <div class="link-row support-link-row">
-                    ${renderSupportLink(links.discord, "Discord", "Get help, announcements, and community discussion")}
-                    ${renderSupportLink(links.patreon, "Patreon", "Support PylaAI and get early access to newer versions")}
+                <div class="match-list">
+                    ${renderMatchRows(recentMatches)}
                 </div>
             </section>
         </div>
     `;
 
-    document.getElementById("browsePlaystylesBtn")?.addEventListener("click", () => setView("playstyles"));
     document.getElementById("goToBrawlersBtn")?.addEventListener("click", () => setView("queue"));
+    document.getElementById("openHistoryBtn")?.addEventListener("click", () => setView("history"));
+    document.querySelectorAll("[data-activity-tab]").forEach((button) => {
+        button.addEventListener("click", () => {
+            state.activityTab = button.dataset.activityTab;
+            renderDashboard();
+        });
+    });
     bindRuntimeButtons();
+}
+
+function renderStatusItem(label, value, tone) {
+    return `<div class="status-item ${tone}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function renderRunFact(label, value, className = "") {
+    return `<div class="run-fact ${className}"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+}
+
+function renderSessionStat(label, value, tone = "") {
+    return `<div class="session-stat ${tone}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function formatResult(result) {
+    if (!result) return "No result yet";
+    return String(result).replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function formatDuration(value) {
+    const total = Math.max(0, Number(value) || 0);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
+function renderEventRows(events, debug) {
+    if (!events.length) {
+        return `<div class="activity-empty">${debug ? "No debug events have been recorded." : "Waiting for the next event."}</div>`;
+    }
+    return events.slice(0, 10).map((event) => `
+        <article class="event-row event-${escapeHtml(String(event.label || "system").toLowerCase())}">
+            <span class="event-label">${escapeHtml(event.label || "System")}</span>
+            <p>${escapeHtml(debug && event.details ? event.details : event.message)}</p>
+            <time>${escapeHtml(formatEventTime(event.timestamp))}</time>
+        </article>
+    `).join("");
+}
+
+function renderMatchRows(matches) {
+    if (!matches.length) {
+        return '<div class="match-empty">No matches recorded yet. Results will appear here as the session runs.</div>';
+    }
+    return matches.slice(0, 10).map((match) => {
+        const result = String(match.result || "unknown").toLowerCase();
+        const mode = Array.isArray(match.playstyle_gamemodes) ? match.playstyle_gamemodes.join(", ") : (match.mode || match.playstyle || "");
+        const trophies = match.trophies ?? match.trophy_after;
+        return `
+            <article class="match-row ${escapeHtml(result)}">
+                <span class="match-result">${escapeHtml(formatResult(result))}</span>
+                <strong>${escapeHtml(match.brawler || "Unknown brawler")}</strong>
+                <span class="match-mode">${escapeHtml(mode || "Mode unavailable")}</span>
+                <span class="match-trophies ${Number(match.trophy_delta) < 0 ? "negative" : "positive"}">${escapeHtml(formatSignedNumber(match.trophy_delta || 0))} trophies</span>
+                <span class="match-total">${trophies == null ? "-" : `${trophies} total`}</span>
+                <time>${escapeHtml(formatEventTime(match.timestamp || match.date_sort || match.date_time))}</time>
+            </article>
+        `;
+    }).join("");
+}
+
+function formatEventTime(value) {
+    const date = new Date(value || "");
+    if (Number.isNaN(date.getTime())) return value || "Now";
+    const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+    if (seconds < 10) return "Now";
+    if (seconds < 60) return `${seconds} seconds ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+    return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function renderSupportLink(link, title, subtitle = "") {
@@ -540,8 +668,8 @@ function getPlayerPillState() {
     if (!state.bootstrap?.auth?.early_access) {
         return {
             className: "early-access-locked",
-            title: "Early Access Required",
-            detail: "Get early access to sync live stats from Brawl Stars API.",
+            title: "Integration unavailable",
+            detail: "Live Brawl Stars API sync is not included in this build.",
         };
     }
 
@@ -611,8 +739,8 @@ function renderQueue() {
                             <input id="brawlerSearch" type="search" placeholder="Search by brawler name" value="${escapeHtml(state.brawlerSearch)}">
                         </label>
                         <label class="input-group ${!state.bootstrap?.auth?.early_access ? "disabled-early-access" : ""}">
-                            <span>Player Tag ${!state.bootstrap?.auth?.early_access ? `<span class="ea-badge">Early Access</span>` : ""}</span>
-                            <input id="playerTagInput" type="text" placeholder="${!state.bootstrap?.auth?.early_access ? "Locked - Early Access Only" : "#PLAYER"}" value="${!state.bootstrap?.auth?.early_access ? "" : escapeHtml(formatPlayerTagInput(state.bootstrap.settings.general.player_tag || ""))}" ${!state.bootstrap?.auth?.early_access ? "disabled" : ""}>
+                            <span>Player Tag ${!state.bootstrap?.auth?.early_access ? `<span class="ea-badge">Optional integration</span>` : ""}</span>
+                            <input id="playerTagInput" type="text" placeholder="${!state.bootstrap?.auth?.early_access ? "Unavailable in this build" : "#PLAYER"}" value="${!state.bootstrap?.auth?.early_access ? "" : escapeHtml(formatPlayerTagInput(state.bootstrap.settings.general.player_tag || ""))}" ${!state.bootstrap?.auth?.early_access ? "disabled" : ""}>
                         </label>
                     </div>
                     <div class="queue-toolbar-bottom">
@@ -747,7 +875,7 @@ function renderPlaystyles() {
                 </div>
                 <div class="toolbar-actions">
                     <button id="importPlaystyleBtn" class="btn">${iconMarkup("import")} Import</button>
-                    <input id="playstyleFileInput" type="file" accept=".pyla" class="hidden">
+                    <input id="playstyleFileInput" type="file" accept=".iris" class="hidden">
                 </div>
             </section>
 
@@ -1204,12 +1332,11 @@ function renderHistoryResultTile(point) {
 
 function historyPointTooltip(point) {
     const delta = Number(point.delta || 0);
-    const deltaClass = delta < 0 ? "negative" : "positive";
     return [
         point.label || "Unknown time",
-        `<span class="tooltip-trophy-line ${deltaClass}">${formatSignedNumber(delta)} <img src="/api/assets/support/trophies_icon.png" alt=""></span>`,
-        `<span class="tooltip-trophy-line total">${point.value ?? "N/A"} <img src="/api/assets/support/trophies_icon.png" alt=""></span>`,
-    ].join("<br>");
+        `${formatSignedNumber(delta)} trophies`,
+        `${point.value ?? "N/A"} total trophies`,
+    ].join("\n");
 }
 
 function formatResultLabel(value) {
@@ -1383,7 +1510,8 @@ function renderQueueDock() {
     const dock = document.getElementById("queueDock");
     if (!dock) return;
 
-    const visible = ["dashboard", "queue"].includes(state.currentView);
+    // The dashboard is deliberately quiet; queue management lives in Brawlers.
+    const visible = state.currentView === "queue";
     dock.classList.toggle("hidden", !visible);
     if (!visible) return;
 
@@ -1448,7 +1576,7 @@ function bindRuntimeButtons() {
                 state.bootstrap.auth = result.auth;
                 toggleAuthModal();
             }
-            showToast(result.code ? formatAuthToast(result) : (result.message || "Unable to start Pyla."), "error");
+            showToast(result.code ? formatAuthToast(result) : (result.message || "Unable to start Iris."), "error");
             return;
         }
 
@@ -1456,7 +1584,7 @@ function bindRuntimeButtons() {
         updateChrome();
         renderDashboard();
         renderQueueDock();
-        showToast("Pyla runtime started.", "success");
+        showToast("Iris runtime started.", "success");
     });
 
     document.getElementById("resumeRuntimeBtn")?.addEventListener("click", async () => {
@@ -1466,7 +1594,7 @@ function bindRuntimeButtons() {
                 state.bootstrap.auth = result.auth;
                 toggleAuthModal();
             }
-            showToast(result.code ? formatAuthToast(result) : (result.message || "Unable to resume Pyla."), "error");
+            showToast(result.code ? formatAuthToast(result) : (result.message || "Unable to resume Iris."), "error");
             return;
         }
 
@@ -1474,7 +1602,7 @@ function bindRuntimeButtons() {
         updateChrome();
         renderDashboard();
         renderQueueDock();
-        showToast("Pyla runtime resumed.", "success");
+        showToast("Iris runtime resumed.", "success");
     });
 
     document.getElementById("pauseRuntimeBtn")?.addEventListener("click", async () => {
@@ -1482,7 +1610,7 @@ function bindRuntimeButtons() {
         if (button?.classList.contains("is-disabled")) return;
         const result = await fetchJSON("/api/runtime/pause", { method: "POST" }, true);
         if (!result.ok) {
-            showToast(result.message || "Unable to pause Pyla.", "error");
+            showToast(result.message || "Unable to pause Iris.", "error");
             return;
         }
 
@@ -1496,7 +1624,7 @@ function bindRuntimeButtons() {
     document.getElementById("stopRuntimeBtn")?.addEventListener("click", async () => {
         const result = await fetchJSON("/api/runtime/stop", { method: "POST" }, true);
         if (!result.ok) {
-            showToast(result.message || "Unable to stop Pyla.", "error");
+            showToast(result.message || "Unable to stop Iris.", "error");
             return;
         }
 
@@ -1520,7 +1648,9 @@ async function refreshRuntimeState() {
         const result = await fetchJSON("/api/runtime/status", {}, true);
         if (!result.ok || !result.runtime) return;
 
-        const prevState = state.bootstrap.runtime?.state;
+        const previousRuntime = state.bootstrap.runtime || {};
+        const prevState = previousRuntime.state;
+        const runtimeChanged = JSON.stringify(previousRuntime) !== JSON.stringify(result.runtime);
         state.bootstrap.runtime = result.runtime;
 
         if (result.runtime.is_running) {
@@ -1528,14 +1658,14 @@ async function refreshRuntimeState() {
             await refreshMatchHistory();
         }
 
-        if (prevState !== result.runtime.state) {
+        if (prevState !== result.runtime.state || (runtimeChanged && state.currentView === "dashboard")) {
             updateChrome();
             if (state.currentView === "dashboard") {
                 renderDashboard();
                 renderQueueDock();
             }
             if (result.runtime.state === "error") {
-                showToast(result.runtime.last_error || "Pyla stopped with an error.", "error");
+                showToast(result.runtime.last_error || "Iris stopped with an error.", "error");
             }
 
             if (prevState === "running" && !result.runtime.is_running) {
@@ -1556,6 +1686,10 @@ async function refreshMatchHistory() {
         if (JSON.stringify(result.items) === JSON.stringify(prevItems)) return;
 
         state.bootstrap.history = result;
+
+        if (state.currentView === "dashboard") {
+            renderDashboard();
+        }
 
         if (state.currentView === "history") {
             const summary = getHistorySummary();
@@ -2321,14 +2455,12 @@ function showEarlyAccessModal() {
         eaModal.innerHTML = `
             <div class="modal">
                 <div class="modal-header">
-                    <p class="eyebrow" style="color: #ff9f1a; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">Early Access Feature</p>
-                    <h3 style="font-size: 1.35rem; font-weight: 900; margin-bottom: 6px; color: white;">Unlock Premium Features</h3>
-                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 10px; line-height: 1.55;">This feature (such as Player Tag API integration, Push All, and Advanced Debug Visuals) requires the <strong>Pyla Early Access</strong> module.</p>
-                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 12px; line-height: 1.55;">Early access is obtainable on our Discord server in #how-to-get-early-access.</p>
+                    <p class="eyebrow">Optional Integration</p>
+                    <h3 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 6px;">Feature unavailable</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 10px; line-height: 1.55;">Player Tag API sync, Push All, and Advanced Debug Visuals require an optional integration module that is not included in this build.</p>
                 </div>
                 <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
-                    <a class="btn btn-primary w-full" href="https://discord.com/channels/1205263029269438574/1233146889843769417" target="_blank" rel="noreferrer" style="background: #ff9f1a; border-color: transparent; color: black; font-weight: 800; box-shadow: 0 8px 20px rgba(255, 159, 26, 0.25);">Get Early Access</a>
-                    <button id="closeEAModalBtn" class="btn w-full" style="font-weight: 700;">Maybe Later</button>
+                    <button id="closeEAModalBtn" class="btn btn-primary w-full">Close</button>
                 </div>
             </div>
         `;

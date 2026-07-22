@@ -7,6 +7,7 @@ from utils import (
     EasyOCRInitializationError,
     count_hsv_pixels,
     extract_text_and_positions,
+    get_ocr_engine_name,
     load_toml_as_dict, load_all_brawlers_names, config_bool,
 )
 
@@ -82,6 +83,8 @@ class LobbyAutomation:
                 print("The bot will continue without changing the currently selected brawler.")
                 return "error"
             results = {k: v for k, v in results.items() if len(k) >= 2}
+            detected_text = ", ".join(sorted(results)) if results else "nothing"
+            print(f"OCR ({get_ocr_engine_name()}) detected: {detected_text}")
             clean_results = {}
             for key in results.keys():
                 orig_key = key
@@ -109,8 +112,9 @@ class LobbyAutomation:
             if brawler in clean_results.keys():
                 matched_key = brawler
             else:
+                brawler_aliases = self.all_brawlers_names.get(brawler, [])
                 for detected_name in clean_results.keys():
-                    if detected_name in self.all_brawlers_names[brawler]:
+                    if detected_name in brawler_aliases:
                         matched_key = detected_name
                         print(f"Matched detected name '{detected_name}' to brawler '{brawler}' using alias list.")
                         break

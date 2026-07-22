@@ -5,3 +5,5 @@ debug_view = false
 debug_view_fps = 10
 advanced_debug_visuals = false
 record_debug_preview_clips = false
+debug_capture_max_files = 100
+debug_capture_max_mb = 500

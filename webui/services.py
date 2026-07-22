@@ -6,17 +6,19 @@ import json
 import logging
 import os
 import shutil
+import threading
 from pathlib import Path
 from typing import Any
 from packaging import version
-from network import make_request, get, post, NetworkError
+import network
 from werkzeug.utils import secure_filename
+from runtime_paths import first_existing_runtime_path
+from health import get_health_report
 
 from utils import (
     api_base_url,
     clean_queue,
     get_brawler_list,
-    get_discord_link,
     get_latest_version,
     get_playstyles_list,
     load_brawlers_info,
@@ -79,8 +81,6 @@ def check_if_exists(username):
         return False
 
 
-PATREON_LINK = "https://www.patreon.com/iris/membership"
-PATREON_LABEL = "www.patreon.com/c/iris"
 INVALID_PLAYER_TAG_MESSAGE = "Player tag is incorrect. Use your Brawl Stars player tag, not your Supercell ID."
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,8 @@ class WebDataService:
         "debug_view_fps": ("int", 30),
         "advanced_debug_visuals": ("bool", False),
         "record_debug_preview_clips": ("bool", False),
+        "debug_capture_max_files": ("int", 100),
+        "debug_capture_max_mb": ("int", 500),
     }
 
     BOT_FIELDS: dict[str, tuple[str, Any]] = {
@@ -118,10 +120,10 @@ class WebDataService:
         "minimum_movement_delay": ("float", 0.1),
         "unstuck_movement_delay": ("float", 2.4),
         "unstuck_movement_hold_time": ("float", 1.4),
-        "perceived_tile_size": ("int", 54),
+        "perceived_tile_size": ("int", 80),
         "centered_wall_detection": ("bool", False),
         "wall_detection_confidence": ("float", 0.6),
-        "entity_detection_confidence": ("float", 0.6),
+        "entity_detection_confidence": ("float", 0.5),
         "seconds_to_hold_attack_after_reaching_max": ("float", 1.5),
         "idle_pixels_minimum": ("float", 75000.0),
         "super_pixels_minimum": ("float", 1800.0),
@@ -160,6 +162,7 @@ class WebDataService:
         self._latest_version_cache: str | None = None
         self._queue_items: list[dict[str, Any]] = []
         self._runtime_queue_mtime: float | None = None
+        self._queue_lock = threading.Lock()
         self._load_startup_queue_if_enabled()
 
     @staticmethod
@@ -387,7 +390,15 @@ class WebDataService:
                     warnings.append(f"New version available: {latest_version}")
             except Exception:
                 pass
+        health = get_health_report(include_optional=False)
+        if health["status"] == "error":
+            warnings.append(f"Health check found {health['error_count']} blocking issue(s).")
+        elif health["status"] == "warning":
+            warnings.append(f"Health check found {health['warning_count']} warning(s).")
         return warnings
+
+    def get_health_payload(self) -> dict[str, Any]:
+        return get_health_report()
 
     def _resolve_brawler_catalog(self) -> list[str]:
         names = get_brawler_list()
@@ -431,8 +442,10 @@ class WebDataService:
 
     def get_queue_data(self) -> list[dict[str, Any]]:
         self._sync_running_queue_from_saved_file()
+        with self._queue_lock:
+            queue_snapshot = list(self._queue_items)
         queue_items = []
-        for item in self._queue_items:
+        for item in queue_snapshot:
             try:
                 normalized = self.normalize_queue_entry(item)
                 normalized["current_value"] = normalized[normalized["type"]]
@@ -451,7 +464,8 @@ class WebDataService:
 
     def save_queue_data(self, queue_items: list[dict[str, Any]]):
         normalized_items = [self.normalize_queue_entry(item) for item in queue_items]
-        self._queue_items = normalized_items
+        with self._queue_lock:
+            self._queue_items = normalized_items
         try:
             save_brawler_data(normalized_items)
         except Exception as e:
@@ -463,7 +477,10 @@ class WebDataService:
         if not runtime_status.get("is_running"):
             return
 
-        queue_path = resolve_project_path("latest_brawler_data.json")
+        queue_path = first_existing_runtime_path(
+            ("latest_brawler_data.json",),
+            Path("latest_brawler_data.json"),
+        )
         if not queue_path.exists():
             return
 
@@ -473,7 +490,9 @@ class WebDataService:
 
         loaded_brawler_data = load_brawler_data()
         if isinstance(loaded_brawler_data, list):
-            self._queue_items = [self.normalize_queue_entry(item) for item in loaded_brawler_data]
+            normalized = [self.normalize_queue_entry(item) for item in loaded_brawler_data]
+            with self._queue_lock:
+                self._queue_items = normalized
             self._runtime_queue_mtime = current_mtime
 
     def import_queue_file(self, file_storage) -> list[dict[str, Any]]:
@@ -712,7 +731,12 @@ class WebDataService:
             return self._select_fields(self._normalize_debug_settings(self._load_config("cfg/debug_settings.toml")), self.DEBUG_FIELDS)
         if section == "webhook":
             config = self._load_config("cfg/webhook_config.toml")
-            return self._select_fields(config, self.WEBHOOK_FIELDS)
+            payload = self._select_fields(config, self.WEBHOOK_FIELDS)
+            SENSITIVE_KEYS = ["discord_bot_token", "telegram_token", "telegram_chat_id", "webhook_url", "discord_id"]
+            for key in SENSITIVE_KEYS:
+                if key in payload and payload[key]:
+                    payload[key] = "••••••••"
+            return payload
         raise KeyError(f"Unknown settings section: {section}")
 
     def update_settings(self, section: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -744,7 +768,13 @@ class WebDataService:
             return self.get_settings_payload("debug")
         if section == "webhook":
             config = self._load_config("cfg/webhook_config.toml")
-            self._save_config("cfg/webhook_config.toml", self._apply_updates(config, self.WEBHOOK_FIELDS, payload))
+            masked_value = "••••••••"
+            safe_payload = {
+                key: value
+                for key, value in payload.items()
+                if value != masked_value
+            }
+            self._save_config("cfg/webhook_config.toml", self._apply_updates(config, self.WEBHOOK_FIELDS, safe_payload))
             return self.get_settings_payload("webhook")
         raise KeyError(f"Unknown settings section: {section}")
 
@@ -842,9 +872,18 @@ class WebDataService:
         return bool(player_info.get("name") and isinstance(player_info.get("brawlers"), list) and player_info.get("brawlers"))
 
     def get_match_history_payload(self) -> dict[str, Any]:
-        csv_path = resolve_project_path("cfg", "match_history.csv")
+        csv_path = first_existing_runtime_path(
+            ("match_history.csv",),
+            Path("cfg") / "match_history.csv",
+        )
 
         grouped: dict[str, dict[str, Any]] = {}
+        all_matches: list[dict[str, Any]] = []
+
+        if not csv_path.exists():
+            payload = self._build_match_history_response([])
+            payload["recent_matches"] = []
+            return payload
 
         with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
             for row in csv.DictReader(handle):
@@ -877,7 +916,8 @@ class WebDataService:
                     item["last_played"] = played_at.strftime("%Y-%m-%d %H:%M")
                     item["last_played_sort"] = played_at.isoformat()
 
-                item["matches"].append({
+                match = {
+                    "brawler": brawler,
                     "date_time": played_at.strftime("%Y-%m-%d %H:%M") if played_at else str(row.get("date_time", "")).strip(),
                     "date_sort": played_at_sort,
                     "result": result,
@@ -891,7 +931,9 @@ class WebDataService:
                     ],
                     "iris_version": str(row.get("iris_version", "") or "").strip(),
                     "power_level": power_level,
-                })
+                }
+                item["matches"].append(match)
+                all_matches.append(match)
 
                 if result == "victory":
                     item["wins"] += 1
@@ -954,7 +996,13 @@ class WebDataService:
             })
 
         items.sort(key=lambda item: (-item["total_matches"], item["brawler"]))
-        return self._build_match_history_response(items)
+        payload = self._build_match_history_response(items)
+        payload["recent_matches"] = sorted(
+            all_matches,
+            key=lambda match: match["date_sort"] or match["date_time"],
+            reverse=True,
+        )[:10]
+        return payload
 
     @staticmethod
     def _parse_match_datetime(value: Any) -> datetime | None:
@@ -996,7 +1044,6 @@ class WebDataService:
         return {"summary": summary, "items": items}
 
     def get_bootstrap_payload(self) -> dict[str, Any]:
-        discord_link = get_discord_link()
         auth_payload = self.get_auth_state()
         auth_payload["early_access"] = early_access
         payload = {
@@ -1008,18 +1055,7 @@ class WebDataService:
             },
             "auth": auth_payload,
             "runtime": self.runtime_manager.get_status(),
-            "links": {
-                "discord": {
-                    "label": discord_link,
-                    "url": discord_link,
-                    "icon_url": "/api/assets/support/discord_logo.png",
-                },
-                "patreon": {
-                    "label": PATREON_LABEL,
-                    "url": PATREON_LINK,
-                    "icon_url": "/api/assets/support/patreon.png",
-                },
-            },
+            "health": self.get_health_payload(),
             "queue": self.get_queue_data(),
             "playstyles": self.get_playstyles_payload(),
             "settings": {

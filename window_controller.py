@@ -3,6 +3,7 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
+import re
 
 import scrcpy
 from adbutils import adb, AdbDevice
@@ -124,9 +125,13 @@ class WindowController:
             atexit.register(self.close)
             print("Scrcpy client started successfully.")
 
-        except Exception:
-            raise Exception(f"Error during ADB/scrcpy initialization\nFailed to connect to the emulator/device.\nMake sure you have ADB enabled in your emulator settings. If you don't know how, check https://vimeo.com/1174882529?fl=pl&fe=s.\n if it still doesn't work, check https://discord.com/channels/1205263029269438574/1227618442073342002/1499331741838610433 to try fixing it.")
+        except Exception as exc:
+            raise RuntimeError(
+                "ADB/scrcpy could not connect to the emulator. Enable ADB in the emulator settings, "
+                "then follow the macOS connection steps in TROUBLESHOOTING.md."
+            ) from exc
         self.are_we_moving = False
+        self._last_movement_log_time = 0.0
         self.PID_JOYSTICK = 1
         self.PID_ATTACK = 2
         self._move_lock = threading.RLock()
@@ -135,7 +140,6 @@ class WindowController:
         """Detect device screen resolution via ADB and compute scaling ratios."""
         try:
             output = self.device.shell("wm size")
-            import re
             match = re.search(r"(\d+)x(\d+)", output)
             if match:
                 width, height = int(match.group(1)), int(match.group(2))
@@ -178,7 +182,8 @@ class WindowController:
     def force_rediscover(self) -> bool:
         print("Restarting ADB server and re-discovering device.")
         try:
-            self.scrcpy_client.stop()
+            if hasattr(self, 'scrcpy_client') and self.scrcpy_client:
+                self.scrcpy_client.stop()
         except Exception:
             pass
         restart_adb_server()
@@ -303,50 +308,81 @@ class WindowController:
     def touch_down(self, x, y, pointer_id=0):
         try:
             self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_DOWN, pointer_id)
+            return True
         except Exception as e:
             print(f"Error during touch_down at ({x}, {y}) with pointer_id {pointer_id}: {e}")
             if self.reconnect_scrcpy() :
                 try:
                     self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_DOWN, pointer_id)
+                    return True
                 except Exception as e2:
                     print(f"Retry after reconnect failed during touch_down at ({x}, {y}) with pointer_id {pointer_id}: {e2}")
+            return False
 
     def touch_move(self, x, y, pointer_id=0):
         try:
             self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_MOVE, pointer_id)
+            return True
         except Exception as e:
             print(f"Error during touch_move at ({x}, {y}) with pointer_id {pointer_id}: {e}")
             if self.reconnect_scrcpy():
                 try:
                     self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_MOVE, pointer_id)
+                    return True
                 except Exception as e2:
                     print(f"Retry after reconnect failed during touch_move at ({x}, {y}) with pointer_id {pointer_id}: {e2}")
+            return False
 
     def touch_up(self, x, y, pointer_id=0):
         try:
             self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_UP, pointer_id)
+            return True
         except Exception as e:
             print(f"Error during touch_up at ({x}, {y}) with pointer_id {pointer_id}: {e}")
             if self.reconnect_scrcpy():
                 try:
                     self.scrcpy_client.control.touch(int(x), int(y), scrcpy.ACTION_UP, pointer_id)
+                    return True
                 except Exception as e2:
                     print(f"Retry after reconnect failed during touch_up at ({x}, {y}) with pointer_id {pointer_id}: {e2}")
+            return False
 
     def move(self, x, y):
         target_x = self.joystick_x + x
         target_y = self.joystick_y + y
         with self._move_lock:
             if not self.are_we_moving:
-                self.touch_down(self.joystick_x, self.joystick_y, pointer_id=self.PID_JOYSTICK)
-                self.touch_move(target_x, target_y, pointer_id=self.PID_JOYSTICK)
+                if not self.touch_down(self.joystick_x, self.joystick_y, pointer_id=self.PID_JOYSTICK):
+                    print("Movement input failed: joystick touch-down was not sent.")
+                    return False
+                if not self.touch_move(target_x, target_y, pointer_id=self.PID_JOYSTICK):
+                    self.touch_up(self.joystick_x, self.joystick_y, pointer_id=self.PID_JOYSTICK)
+                    print("Movement input failed: joystick move was not sent.")
+                    return False
                 self.are_we_moving = True
                 self.last_joystick_pos = (target_x, target_y)
-                return
+                self._log_movement(target_x, target_y, started=True)
+                return True
             if not self.re_apply_movement and self.last_joystick_pos == (target_x, target_y):
-                return
-            self.touch_move(target_x, target_y, pointer_id=self.PID_JOYSTICK)
+                self._log_movement(target_x, target_y)
+                return True
+            if not self.touch_move(target_x, target_y, pointer_id=self.PID_JOYSTICK):
+                print("Movement input failed: joystick update was not sent.")
+                return False
             self.last_joystick_pos = (target_x, target_y)
+            self._log_movement(target_x, target_y)
+            return True
+
+    def _log_movement(self, target_x, target_y, started=False):
+        now = time.time()
+        if started or now - self._last_movement_log_time >= 10.0:
+            action = "started" if started else "active"
+            print(
+                f"Movement input {action}: joystick "
+                f"({int(self.joystick_x)}, {int(self.joystick_y)}) -> "
+                f"({int(target_x)}, {int(target_y)})"
+            )
+            self._last_movement_log_time = now
 
     def release_movement(self):
         with self._move_lock:
@@ -397,12 +433,14 @@ class WindowController:
             self.debug_view.close()
         except Exception as exc:
             print(f"Debug view close failed: {exc}")
-        self.stop_scrcpy_with_timeout()
+        if hasattr(self, 'scrcpy_client') and self.scrcpy_client is not None:
+            self.stop_scrcpy_with_timeout()
 
     def stop_scrcpy_with_timeout(self, timeout=2.0):
         def stop_client():
             try:
-                self.scrcpy_client.stop()
+                if self.scrcpy_client:
+                    self.scrcpy_client.stop()
             except Exception as exc:
                 print(f"Scrcpy stop failed: {exc}")
 

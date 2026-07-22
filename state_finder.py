@@ -5,6 +5,7 @@ import time
 sys.path.append(os.path.abspath('/'))
 from utils import load_toml_as_dict, config_bool
 from threading_utils import ThreadSafeDict
+from runtime_paths import prune_runtime_files, runtime_path
 
 last_debug_print_time = 0.0
 should_print_debug_info = False
@@ -17,9 +18,16 @@ states_path = r"./images/states/"
 
 star_drops_path = r"./images/star_drop_types/"
 images_with_star_drop = []
-for file in os.listdir(star_drops_path):
-    if "star_drop" in file:
-        images_with_star_drop.append(file)
+
+def _load_star_drop_images():
+    global images_with_star_drop
+    try:
+        files = os.listdir(star_drops_path)
+        images_with_star_drop = [f for f in files if "star_drop" in f]
+    except FileNotFoundError:
+        images_with_star_drop = []
+
+_load_star_drop_images()
 
 end_results_path = r"./images/end_results/"
 
@@ -35,8 +43,16 @@ def is_template_in_region(image, template_path, region, threshold=0.75):
     new_x, new_y = int(orig_x * width_ratio), int(orig_y * height_ratio)
     new_width, new_height = int(orig_width * width_ratio), int(orig_height * height_ratio)
     cropped_image = image[new_y:new_y + new_height, new_x:new_x + new_width]
+    if cropped_image.size == 0:
+        return False
     current_height, current_width = image.shape[:2]
     loaded_template = load_template(template_path, current_width, current_height)
+    if loaded_template is None:
+        return False
+    if loaded_template.shape[0] > cropped_image.shape[0] or loaded_template.shape[1] > cropped_image.shape[1]:
+        if should_print_debug_info:
+            print(f"Template {template_path} is larger than region {region}; skipping match.")
+        return False
     result = cv2.matchTemplate(cropped_image, loaded_template,
                                cv2.TM_CCOEFF_NORMED)
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
@@ -51,6 +67,8 @@ def load_template(image_path, width, height):
         return cached_templates[(image_path, width, height)]
     current_width_ratio, current_height_ratio = width / orig_screen_width, height / orig_screen_height
     image = cv2.imread(image_path)
+    if image is None:
+        return None
     orig_height, orig_width = image.shape[:2]
     resized_image = cv2.resize(image, (int(orig_width * current_width_ratio), int(orig_height * current_height_ratio)))
     resized_colored_image = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
@@ -124,6 +142,21 @@ def get_in_game_state(image):
         if should_print_debug_info: print("Checking for trophy reward...")
         if is_in_trophy_reward(image):
             return "trophy_reward"
+        if should_print_debug_info: print("Checking for Android not-responding alert...")
+        if is_app_not_responding(image):
+            return "app_not_responding"
+        if should_print_debug_info: print("Checking for cannot-rejoin alert...")
+        if is_cannot_rejoin_battle(image):
+            return "cannot_rejoin_battle"
+        if should_print_debug_info: print("Checking for app loading screen...")
+        if is_app_loading(image):
+            return "loading"
+        if should_print_debug_info: print("Checking for match intro...")
+        if is_match_intro(image):
+            return "match_intro"
+        if should_print_debug_info: print("Checking for spectator mode...")
+        if is_spectating(image):
+            return "spectating"
         if should_print_debug_info: print("Checking for idle disconnect...")
         if is_in_idle_disconnect(image):
             return "idle_disconnect"
@@ -173,7 +206,12 @@ def is_in_prestige_milestone(image):
     return is_template_in_region(image, states_path + "prestige_continue.png", region_data['prestige_continue'])
 
 def is_in_nano_noodles(image):
-    return is_template_in_region(image, states_path + "nano_noodles.png", region_data['nano_noodles'])
+    return is_template_in_region(
+        image,
+        states_path + "nano_noodles_daily_wins.png",
+        region_data['nano_noodles'],
+        threshold=0.8,
+    )
 
 
 def is_in_star_drop(image):
@@ -190,13 +228,74 @@ def is_in_idle_disconnect(image) -> bool:
     return is_template_in_region(image, states_path + 'idle_disconnect.png', region_data["idle_disconnect"], threshold=0.6)
 
 
+def is_app_not_responding(image) -> bool:
+    return is_template_in_region(
+        image,
+        states_path + 'app_not_responding.png',
+        region_data["app_not_responding"],
+        threshold=0.75,
+    )
+
+
+def is_cannot_rejoin_battle(image) -> bool:
+    return is_template_in_region(
+        image,
+        states_path + 'cannot_rejoin_battle.png',
+        region_data["cannot_rejoin_battle"],
+        threshold=0.75,
+    )
+
+
+def is_app_loading(image) -> bool:
+    return (
+        is_template_in_region(
+            image,
+            states_path + 'brawl_loading_logo.png',
+            region_data["brawl_loading"],
+            threshold=0.8,
+        )
+        or is_template_in_region(
+            image,
+            states_path + 'app_launch_icon.png',
+            region_data["app_launching"],
+            threshold=0.8,
+        )
+    )
+
+
+def is_match_intro(image) -> bool:
+    return is_template_in_region(
+        image,
+        states_path + 'match_intro_vs.png',
+        region_data["match_intro"],
+        threshold=0.8,
+    )
+
+
+def is_spectating(image) -> bool:
+    return is_template_in_region(
+        image,
+        states_path + 'spectating_following.png',
+        region_data["spectating"],
+        threshold=0.8,
+    )
+
+
 def get_state(screenshot):
     state = get_in_game_state(screenshot)
     global _debug_frame_counter, _last_debug_write_time
-    if config_bool(load_toml_as_dict("cfg/debug_settings.toml").get('state_finder_debug'), False):
+    debug_config = load_toml_as_dict("cfg/debug_settings.toml")
+    if config_bool(debug_config.get('state_finder_debug'), False):
         now = time.time()
         if now - _last_debug_write_time >= 5.0:
             _last_debug_write_time = now
             _debug_frame_counter += 1
-            cv2.imwrite(f"./debug_frames/state_screenshot_{state}_{_debug_frame_counter}.png", cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB))
+            debug_path = runtime_path("debug_frames", f"state_screenshot_{state}_{_debug_frame_counter}.png")
+            cv2.imwrite(str(debug_path), cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB))
+            prune_runtime_files(
+                debug_path.parent,
+                patterns=("*.png", "*.jpg", "*.jpeg", "*.mp4"),
+                max_files=max(int(debug_config.get("debug_capture_max_files", 100)), 1),
+                max_bytes=max(int(float(debug_config.get("debug_capture_max_mb", 500)) * 1024 * 1024), 1),
+            )
     return state

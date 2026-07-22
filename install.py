@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-install.py — One-shot installer for IrisAI (macOS-first).
-Detects GPU, installs deps, downloads models, verifies ADB, creates .env, validates config.
-Usage: python install.py [--cpu|--coreml] [--dev]
-"""
+"""One-shot macOS installer for IrisAI."""
 import argparse
 import os
 import platform
@@ -16,53 +12,25 @@ from pathlib import Path
 def detect_platform():
     system = platform.system()
     machine = platform.machine()
-    if system == "Darwin" and machine in ("arm64", "aarch64"):
+    if system != "Darwin":
+        raise RuntimeError("IrisAI supports macOS only.")
+    if machine in ("arm64", "aarch64"):
         return "macos_arm"
-    elif system == "Darwin":
-        return "macos_intel"
-    elif system == "Windows":
-        return "windows"
-    elif system == "Linux":
-        return "linux"
-    return system.lower()
+    return "macos_intel"
 
 
 def detect_gpu():
-    plat = detect_platform()
-    if plat in ("macos_arm", "macos_intel"):
-        try:
-            import torch
-            if hasattr(torch, "mps") and torch.backends.mps.is_available():
-                return "coreml"
-        except ImportError:
-            pass
-        return "cpu"
-    elif plat == "windows":
-        try:
-            result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
-            if result.returncode == 0:
-                return "cuda"
-        except FileNotFoundError:
-            pass
-        try:
-            import onnxruntime as ort
-            if "DmlExecutionProvider" in ort.get_available_providers():
-                return "directml"
-        except ImportError:
-            pass
-        return "cpu"
-    elif plat == "linux":
-        try:
-            result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
-            if result.returncode == 0:
-                return "cuda"
-        except FileNotFoundError:
-            pass
-        return "cpu"
+    detect_platform()
+    try:
+        import torch
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "coreml"
+    except ImportError:
+        pass
     return "cpu"
 
 
-def install_deps(gpu_profile):
+def install_deps(gpu_profile, dry_run=False):
     print(f"\nInstalling dependencies ({gpu_profile} profile)...")
 
     base = [
@@ -70,14 +38,7 @@ def install_deps(gpu_profile):
         "discord.py", "packaging",
     ]
 
-    if gpu_profile == "coreml":
-        extras = ["torch", "onnxruntime"]
-    elif gpu_profile == "cuda":
-        extras = ["torch", "onnxruntime-gpu"]
-    elif gpu_profile == "directml":
-        extras = ["torch", "onnxruntime-directml"]
-    else:
-        extras = ["torch", "onnxruntime"]
+    extras = ["torch", "onnxruntime"]
 
     full = [
         "easyocr", "adbutils", "av", "Flask", "pandas",
@@ -87,16 +48,19 @@ def install_deps(gpu_profile):
     all_deps = base + extras + full
 
     for dep in all_deps:
+        if dry_run:
+            print(f"  Would install {dep}")
+            continue
         print(f"  Installing {dep}...")
         subprocess.check_call(
             [sys.executable, "-m", "pip", "install", dep],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-    print("  Dependencies installed.")
+    print("  Dependency plan complete." if dry_run else "  Dependencies installed.")
 
 
-def download_models():
+def download_models(dry_run=False):
     models_dir = Path("models")
     models_dir.mkdir(exist_ok=True)
 
@@ -128,6 +92,10 @@ def download_models():
             print(f"  {model_name}: no URL in manifest, skipping")
             continue
 
+        if dry_run:
+            print(f"  Would download {model_name} from {url}")
+            continue
+
         print(f"  Downloading {model_name}...")
         try:
             import requests
@@ -139,7 +107,7 @@ def download_models():
             print(f"  {model_name}: download failed ({e})")
 
 
-def download_easyocr_models():
+def download_easyocr_models(dry_run=False):
     """Download EasyOCR model files (craft_mlt_25k.pth, english_g2.pth)."""
     easyocr_dir = Path("models/easyocr")
     easyocr_dir.mkdir(parents=True, exist_ok=True)
@@ -156,6 +124,9 @@ def download_easyocr_models():
         model_path = easyocr_dir / name
         if model_path.exists():
             print(f"  {name}: already exists, skipping")
+            continue
+        if dry_run:
+            print(f"  Would download {name} from {url}")
             continue
         print(f"  Downloading {name}...")
         try:
@@ -175,17 +146,12 @@ def verify_adb():
         return True
     else:
         print("  ADB not found in PATH.")
-        plat = detect_platform()
-        if plat in ("macos_arm", "macos_intel"):
-            print("  Install with: brew install android-platform-tools")
-        elif plat == "windows":
-            print("  Download from: https://developer.android.com/studio/releases/platform-tools")
-        elif plat == "linux":
-            print("  Install with: sudo apt install android-tools-adb")
+        detect_platform()
+        print("  Install with: brew install android-platform-tools")
         return False
 
 
-def create_env_file():
+def create_env_file(dry_run=False):
     env_path = Path(".env")
     if env_path.exists():
         print("  .env already exists, skipping")
@@ -208,18 +174,36 @@ def create_env_file():
 # IRIS_API_KEY=
 # IRIS_API_BASE_URL=https://api.iris.example.com
 """
+    if dry_run:
+        print("  Would create .env with template")
+        return
     env_path.write_text(env_content)
     print("  .env created with template")
+
+
+def run_health_check():
+    print("\nRunning health check...")
+    try:
+        from health import get_health_report
+        report = get_health_report()
+    except Exception as exc:
+        print(f"  Health check failed to run: {exc}")
+        return
+
+    print(f"  Status: {report['status']} ({report['error_count']} errors, {report['warning_count']} warnings)")
+    for check in report["checks"]:
+        if check["ok"]:
+            continue
+        print(f"  - {check['level'].upper()} {check['name']}: {check['message']}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Install IrisAI")
     parser.add_argument("--cpu", action="store_true", help="Force CPU-only installation")
     parser.add_argument("--coreml", action="store_true", help="Force CoreML installation (macOS)")
-    parser.add_argument("--cuda", action="store_true", help="Force CUDA installation (NVIDIA)")
-    parser.add_argument("--directml", action="store_true", help="Force DirectML installation (Windows)")
     parser.add_argument("--dev", action="store_true", help="Dev mode (pip install -e .)")
     parser.add_argument("--no-adb", action="store_true", help="Skip ADB verification")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would happen without installing or downloading")
     args = parser.parse_args()
 
     print("=" * 50)
@@ -233,35 +217,36 @@ def main():
         gpu_profile = "cpu"
     elif args.coreml:
         gpu_profile = "coreml"
-    elif args.cuda:
-        gpu_profile = "cuda"
-    elif args.directml:
-        gpu_profile = "directml"
     else:
         gpu_profile = detect_gpu()
 
     print(f"GPU profile: {gpu_profile}")
 
-    install_deps(gpu_profile)
+    install_deps(gpu_profile, dry_run=args.dry_run)
 
     if args.dev:
         print("\nInstalling in development mode...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", "."])
+        if args.dry_run:
+            print("  Would run pip install -e .")
+        else:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", "."])
 
     print("\nChecking models...")
-    download_models()
-    download_easyocr_models()
+    download_models(dry_run=args.dry_run)
+    download_easyocr_models(dry_run=args.dry_run)
 
     if not args.no_adb:
         print("\nVerifying ADB...")
         verify_adb()
 
     print("\nCreating .env...")
-    create_env_file()
+    create_env_file(dry_run=args.dry_run)
+    run_health_check()
 
     print("\n" + "=" * 50)
-    print("  Installation complete!")
-    print("  Run: python main.py")
+    print("  Dry run complete!" if args.dry_run else "  Installation complete!")
+    if not args.dry_run:
+        print("  Run: python main.py")
     print("=" * 50)
 
 

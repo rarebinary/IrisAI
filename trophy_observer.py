@@ -7,6 +7,9 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
 from datetime import datetime
+from pathlib import Path
+from runtime_paths import first_existing_runtime_path, runtime_path
+from runtime_events import get_runtime_telemetry
 
 
 class GameMode(Enum):
@@ -31,12 +34,17 @@ class ParsedGameResult:
 class TrophyObserver:
 
     def __init__(self):
-        self.history_file = resolve_project_path("cfg", "match_history.csv")
+        self.history_file = first_existing_runtime_path(
+            ("match_history.csv",),
+            Path("cfg") / "match_history.csv",
+        )
+        self._history_write_file = runtime_path("match_history.csv")
         
         self.current_trophies = 0
         self.current_wins = None
         self.match_history = self.load_history()
         self.last_sent_index = len(self.match_history)
+        self._last_saved_index = len(self.match_history)
         self.win_streak = 0
         self.lose_streak = 0
         self.total_losses = 0
@@ -97,15 +105,17 @@ class TrophyObserver:
 
     def save_history(self):
         """Append new match to CSV instead of rewriting entire file."""
-        if not hasattr(self, '_last_saved_index'):
-            self._last_saved_index = 0
-
         new_rows = self.match_history.iloc[self._last_saved_index:]
         if new_rows.empty:
             return
 
-        write_header = not os.path.exists(self.history_file)
-        new_rows.to_csv(self.history_file, mode='a', header=write_header, index=False)
+        if not os.path.exists(self._history_write_file):
+            self.match_history.to_csv(self._history_write_file, index=False)
+            self._last_saved_index = len(self.match_history)
+            return
+
+        write_header = False
+        new_rows.to_csv(self._history_write_file, mode='a', header=write_header, index=False)
         self._last_saved_index = len(self.match_history)
 
     def parse_game_result(self, raw_result: str) -> ParsedGameResult:
@@ -195,6 +205,15 @@ class TrophyObserver:
                                                            "|".join(playstyle_info["brawlers"]), IRIS_VERSION,
                                                            (power_level if power_level is not None else -1)]
         self.match_counter += 1
+        get_runtime_telemetry().record_match(
+            brawler=current_brawler,
+            result=parsed_result.result.value,
+            trophy_delta=trophy_delta,
+            trophies=self.current_trophies,
+            win_streak=self.win_streak,
+            playstyle=playstyle_info.get("name"),
+            mode=parsed_result.gamemode.value,
+        )
         self.send_results_to_api()
         self.save_history()
 

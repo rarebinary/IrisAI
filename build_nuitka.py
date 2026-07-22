@@ -16,8 +16,8 @@ import sys
 
 def main():
     if platform.system() != "Darwin":
-        print("Warning: Nuitka build is primarily tested on macOS.")
-        print("Continuing anyway...")
+        print("IrisAI builds are supported on macOS only.")
+        sys.exit(2)
     
     cmd = [
         sys.executable, "-m", "nuitka",
@@ -37,7 +37,7 @@ def main():
         "--include-data-dir=templates=templates",
         "--include-data-dir=static=static",
         "--include-data-dir=sounds=sounds",
-        "--include-data-dir=images=images",
+        "--include-data-dir=native=native",
         "--macos-create-app-bundle",
         "--macos-app-name=IrisAI",
         "--macos-app-version=1.0.0",

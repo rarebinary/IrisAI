@@ -15,6 +15,24 @@ warnings.filterwarnings(
 )
 
 
+def _macos_provider_candidates(preferred_device, available_providers):
+    preferred_device = str(preferred_device).strip().lower()
+    if preferred_device not in {"auto", "coreml", "cpu"}:
+        raise ValueError(
+            f"Unsupported cpu_or_gpu value: {preferred_device!r}. "
+            "Use 'auto', 'coreml', or 'cpu'."
+        )
+    available = set(available_providers)
+    if preferred_device == "cpu":
+        return ["CPUExecutionProvider"]
+
+    candidates = []
+    if "CoreMLExecutionProvider" in available:
+        candidates.append("CoreMLExecutionProvider")
+    candidates.append("CPUExecutionProvider")
+    return candidates
+
+
 def _numpy_nms(boxes, scores, iou_threshold=0.6):
     if len(boxes) == 0:
         return np.array([], dtype=np.int32)
@@ -160,7 +178,9 @@ class Detect:
         self.optimal_threads_amount = get_optimal_threads() if threads_to_use == "auto" else int(threads_to_use)
         cv2.setNumThreads(self.optimal_threads_amount)
         torch.set_num_threads(self.optimal_threads_amount)
-        self.preferred_device = get_config("cfg/general_config.toml", "cpu_or_gpu", "auto")
+        self.preferred_device = str(
+            get_config("cfg/general_config.toml", "cpu_or_gpu", "auto")
+        ).strip().lower()
         self.model_path = model_path
         self.classes = classes
         self.ignore_classes = set(ignore_classes) if ignore_classes else set()
@@ -170,24 +190,7 @@ class Detect:
 
     def load_model(self):
         available_providers = ort.get_available_providers()
-        if self.preferred_device == "gpu" or self.preferred_device == "auto":
-            if "CUDAExecutionProvider" in available_providers:
-                onnx_provider = "CUDAExecutionProvider"
-                print("Using CUDA GPU")
-            elif "CoreMLExecutionProvider" in available_providers:
-                onnx_provider = "CoreMLExecutionProvider"
-                print("Using Apple Silicon GPU (CoreML)")
-            elif "DmlExecutionProvider" in available_providers:
-                onnx_provider = "DmlExecutionProvider"
-                print("Using GPU (DirectML)")
-            elif "AzureExecutionProvider" in available_providers:
-                onnx_provider = "AzureExecutionProvider"
-            else:
-                print("Using CPU as no GPU provider found")
-                onnx_provider = "CPUExecutionProvider"
-
-        else:
-            onnx_provider = "CPUExecutionProvider"
+        provider_candidates = _macos_provider_candidates(self.preferred_device, available_providers)
 
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -197,17 +200,19 @@ class Detect:
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(f"ONNX model not found: {self.model_path}")
 
-        try:
-            model = ort.InferenceSession(self.model_path, sess_options=so, providers=[onnx_provider])
-        except Exception as e:
-            print(f"Failed to load ONNX model {self.model_path} with provider {onnx_provider}: {e}")
-            print("Trying CPU fallback...")
+        failures = []
+        for onnx_provider in provider_candidates:
             try:
-                model = ort.InferenceSession(self.model_path, sess_options=so, providers=["CPUExecutionProvider"])
-                onnx_provider = "CPUExecutionProvider"
-                print(f"Model loaded with CPU fallback: {self.model_path}")
-            except Exception as e2:
-                raise RuntimeError(f"Cannot load ONNX model {self.model_path}: {e2}") from e2
+                model = ort.InferenceSession(self.model_path, sess_options=so, providers=[onnx_provider])
+                provider_label = "CoreML" if onnx_provider == "CoreMLExecutionProvider" else "CPU"
+                print(f"Using {provider_label} for {os.path.basename(self.model_path)}")
+                break
+            except Exception as exc:
+                failures.append(f"{onnx_provider}: {exc}")
+        else:
+            raise RuntimeError(
+                f"Cannot load ONNX model {self.model_path} with the macOS providers: {'; '.join(failures)}"
+            )
 
         inputs = model.get_inputs()
         if not inputs:

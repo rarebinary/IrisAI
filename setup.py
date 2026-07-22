@@ -17,7 +17,7 @@ setup(
     ],
     extras_require={
         "cpu": ["torch", "onnxruntime"],
-        "coreml": ["torch", "onnxruntime-silicon"],
+        "coreml": ["torch", "onnxruntime"],
         "full": [
             "easyocr>=1.7",
             "adbutils>=2.12",

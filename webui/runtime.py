@@ -4,6 +4,8 @@ import threading
 from typing import Any, Callable
 import traceback
 
+from runtime_events import get_runtime_telemetry
+
 
 class RuntimeControl:
     def __init__(self, state_callback: Callable[[str], None]):
@@ -45,14 +47,19 @@ class RuntimeManager:
         self.iris_main = iris_main
         self._thread: threading.Thread | None = None
         self.rt_control: RuntimeControl | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._state = "idle"
         self._last_error = ""
+        self.telemetry = get_runtime_telemetry()
         self.queue_provider: Callable[[], list[dict[str, Any]]] | None = None
         self._auth_provider: Callable[[], dict[str, Any]] | None = None
     def _set_state(self, state: str):
         with self._lock:
+            previous_state = self._state
             self._state = state
+        if state != previous_state:
+            self.telemetry.update_run(bot_status=state.replace("_", " ").title())
+            self.telemetry.emit("state_changed", f"Runtime is {state.replace('_', ' ')}.")
 
     def configure_start_gate(
             self,
@@ -69,11 +76,12 @@ class RuntimeManager:
                 self._state = "idle"
                 self._thread = None
                 self.rt_control = None
-            return {
+            status = {
                 "state": self._state,
                 "is_running": thread_alive,
                 "last_error": self._last_error,
             }
+        return {**status, **self.telemetry.snapshot()}
 
     def start(self, queue_data: list[dict[str, Any]], discord_bot) -> dict[str, Any]:
         with self._lock:
@@ -84,12 +92,16 @@ class RuntimeManager:
                     self.rt_control.resume()
                     self._state = "running"
                     self._last_error = ""
+                    self.telemetry.update_run(bot_status="Running")
+                    self.telemetry.emit("system", "Runtime resumed.")
                     return {"ok": True, "message": "Iris resumed."}
                 return {"ok": False, "message": f"Iris cannot start while state is {self._state}."}
 
+            self.telemetry.start_session()
             self.rt_control = RuntimeControl(self._set_state)
             self._state = "running"
             self._last_error = ""
+            self.telemetry.update_run(bot_status="Starting")
             self._thread = threading.Thread(
                 target=self._run_worker,
                 args=(queue_data, self.rt_control, discord_bot),
@@ -97,6 +109,7 @@ class RuntimeManager:
                 name="iris-runtime",
             )
             self._thread.start()
+            self.telemetry.emit("system", "Runtime worker started.")
             return {"ok": True, "message": "Iris started."}
 
     def start_current_queue(self, discord_bot) -> dict[str, Any]:
@@ -129,19 +142,26 @@ class RuntimeManager:
             with self._lock:
                 if self._state != "error":
                     self._state = "idle"
+                    self.telemetry.update_run(bot_status="Stopped", emulator_status="Disconnected")
+                    self.telemetry.emit("system", "Runtime stopped.")
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 0
             with self._lock:
                 if code in (0, None):
                     self._state = "idle"
                     self._last_error = ""
+                    self.telemetry.update_run(bot_status="Stopped", emulator_status="Disconnected")
                 else:
                     self._state = "error"
                     self._last_error = f"Iris exited with code {code}."
+                    self.telemetry.update_run(bot_status="Error")
+                    self.telemetry.emit("error", self._last_error)
         except Exception as exc:
             with self._lock:
                 self._state = "error"
                 self._last_error = str(exc)
+                self.telemetry.update_run(bot_status="Error")
+                self.telemetry.emit("error", "Runtime stopped unexpectedly.", details=str(exc))
                 print(str(exc))
                 traceback.print_exc()
         finally:
@@ -158,6 +178,8 @@ class RuntimeManager:
             if self._state == "running":
                 self.rt_control.request_pause()
                 self._state = "pausing"
+                self.telemetry.update_run(bot_status="Pausing")
+                self.telemetry.emit("system", "Pause requested. Iris will pause in the lobby.")
                 return {"ok": True, "message": "Pause requested. Iris will pause in the lobby."}
 
             if self._state in {"pausing", "paused"}:
@@ -176,6 +198,8 @@ class RuntimeManager:
             was_paused = self._state == "paused"
             self.rt_control.request_stop()
             self._state = "stopping"
+            self.telemetry.update_run(bot_status="Stopping")
+            self.telemetry.emit("system", "Stop requested. Iris is shutting down.")
 
         if was_paused and thread:
             thread.join(timeout=2)
@@ -192,3 +216,14 @@ class RuntimeManager:
                 return {"ok": True, "message": "Iris stopped."}
 
         return {"ok": True, "message": "Stop requested. Iris is shutting down."}
+
+    def shutdown(self, timeout: float = 10.0) -> bool:
+        self.stop()
+        with self._lock:
+            thread = self._thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=timeout)
+        stopped = not thread or not thread.is_alive()
+        if not stopped:
+            self.telemetry.emit("warning", "Runtime did not stop before the shutdown timeout.")
+        return stopped

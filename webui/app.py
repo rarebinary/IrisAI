@@ -99,6 +99,10 @@ def create_app(iris_main, start_discord_bot=False):
     def bootstrap():
         return jsonify(data_service.get_bootstrap_payload())
 
+    @app.get("/api/health")
+    def health():
+        return jsonify({"ok": True, "health": data_service.get_health_payload()})
+
     @app.errorhandler(KeyError)
     @app.errorhandler(FileNotFoundError)
     @app.errorhandler(ValueError)

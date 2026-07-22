@@ -24,6 +24,8 @@ except (ImportError, ModuleNotFoundError):
 
 def load_image(image_path, scale_factor):
     image = cv2.imread(image_path)
+    if image is None:
+        raise FileNotFoundError(f"Could not load image: {image_path}")
     orig_height, orig_width = image.shape[:2]
 
     new_width = int(orig_width * scale_factor)
@@ -34,6 +36,13 @@ def load_image(image_path, scale_factor):
 
 
 class StageManager:
+    MATCH_STARTING_STATES = {
+        "match_making",
+        "loading",
+        "match_intro",
+        "brawler_selection",
+    }
+
     def __init__(self, brawlers_data, lobby_automator, window_controller, playstyle_info, state_getting, runtime_control=None):
         self.Lobby_automation = lobby_automator
         self.lobby_config = load_toml_as_dict("./cfg/lobby_config.toml")
@@ -48,6 +57,9 @@ class StageManager:
             'brawler_selection': lambda: 0,
             'popup': self.close_pop_up,
             'match': lambda: 0,
+            'loading': lambda: 0,
+            'match_intro': lambda: 0,
+            'spectating': lambda: 0,
             'match_making': lambda: 0,
             'lobby': self.start_game,
             'star_drop_regular': lambda: self.click_star_drop("regular"),
@@ -65,6 +77,8 @@ class StageManager:
             'end_trio_showdown_3': self.end_game,
             'nano_noodles': self.click_nano_noodles,
             'idle_disconnect': self.handle_idle_disconnect,
+            'app_not_responding': self.handle_app_not_responding,
+            'cannot_rejoin_battle': self.handle_cannot_rejoin_battle,
         }
         self.matches_since_last_webhook_ping = 0
         self.ping_every_x_match = get_config("cfg/webhook_config.toml", "ping_every_x_match", 0)
@@ -136,6 +150,9 @@ class StageManager:
             print(f"Pending brawler switch detected — auto-picking {brawler_name}")
             if self.brawlers_pick_data[0]["automatically_pick"]:
                 result = self.Lobby_automation.select_brawler(brawler_name, self.get_latest_state, runtime_control=self.runtime_control)
+                if result in ("aborted", "stuck"):
+                    print(f"Brawler selection returned {result} — skipping match start")
+                    return
                 attempts = 0
                 while result in ["failed", "error"] and attempts < len(self.brawlers_pick_data):
                     attempts += 1
@@ -163,7 +180,7 @@ class StageManager:
         }
 
         type_of_push = self.brawlers_pick_data[0]['type']
-        value = values[type_of_push]
+        value = values.get(type_of_push, 0)
         push_current_brawler_till = self.brawlers_pick_data[0]['push_until']
 
         if value >= push_current_brawler_till:
@@ -179,7 +196,7 @@ class StageManager:
                     self.runtime_control.request_stop()
                     self.runtime_control.mark_completed("All targets reached")
                 return
-            ping_when_target_is_reached = load_toml_as_dict("cfg/webhook_config.toml")["ping_when_target_is_reached"]
+            ping_when_target_is_reached = load_toml_as_dict("cfg/webhook_config.toml").get("ping_when_target_is_reached", False)
             if ping_when_target_is_reached:
                 screenshot = self.window_controller.screenshot()
                 notify_user("brawler_goal", screenshot, self)
@@ -245,7 +262,7 @@ class StageManager:
 
     def click_nano_noodles(self):
         noodle_x, noodle_y = 960, 740
-        offset_x = 330 * self.window_controller.width_ratio
+        offset_x = 330
         self.window_controller.click(
             noodle_x,
             noodle_y,
@@ -292,7 +309,7 @@ class StageManager:
         button_pressed = False
         end_screen_time = time.time()
         parsed_result = None
-        while current_state.startswith("end") and time.time() - end_screen_time < 35:
+        while current_state and current_state.startswith("end") and time.time() - end_screen_time < 35:
 
             if time.time() - self.time_since_last_stat_change > 25 and parsed_result is None :
                 raw_found_result = '_'.join(current_state.split("_")[1:])
@@ -337,31 +354,55 @@ class StageManager:
             current_state = get_state(screenshot)
 
         if self.play_again_on_win and parsed_result and parsed_result.result == MatchResult.VICTORY and not self._should_pause():
-            print("Waiting for match to start...")
-            start_wait_time = time.time()
-            while time.time() - start_wait_time < 25:
-                if self._should_stop() or self._should_pause():
-                    break
-                screenshot = self.window_controller.screenshot()
-                current_state = get_state(screenshot)
-                if current_state == "match":
-                    print("Match started successfully!")
-                    return
-                if self._sleep_interruptible(0.5):
-                    break
-
-            print("Match did not start within 25s, restarting the game.")
-            self.window_controller.restart_brawl_stars()
-            time.sleep(2)
+            self.wait_for_next_match()
         elif time.time() - end_screen_time > 35:
             print("End screen timeout reached, restarting the game.")
             self.window_controller.restart_brawl_stars()
         print("Game has ended", current_state)
 
+    def wait_for_next_match(self, timeout=25):
+        print("Waiting for matchmaking...")
+        start_wait_time = time.time()
+        while time.time() - start_wait_time < timeout:
+            if self._should_stop() or self._should_pause():
+                return False
+
+            screenshot = self.window_controller.screenshot()
+            current_state = get_state(screenshot)
+            if current_state == "match":
+                print("Match started successfully!")
+                return True
+            if current_state in self.MATCH_STARTING_STATES:
+                readable_state = "Matchmaking" if current_state == "match_making" else current_state.replace("_", " ").title()
+                print(f"Entered {readable_state}; waiting in the normal state loop.")
+                return True
+            if current_state == "lobby":
+                print("Returned to the lobby; the normal state loop will queue again.")
+                return True
+            if self._sleep_interruptible(0.5):
+                return False
+
+        print(f"No matchmaking progress within {timeout}s, restarting the game.")
+        self.window_controller.restart_brawl_stars()
+        time.sleep(2)
+        return False
+
     def handle_idle_disconnect(self):
         print("Idle disconnect detected — restarting Brawl Stars")
+        self.window_controller.release_movement()
         self.window_controller.restart_brawl_stars()
         self.Trophy_observer.reset_losses()
+
+    def handle_app_not_responding(self):
+        print("Android reports that Brawl Stars is not responding — restarting the app")
+        self.window_controller.release_movement()
+        self.window_controller.restart_brawl_stars()
+
+    def handle_cannot_rejoin_battle(self):
+        print("Cannot rejoin battle detected — pressing Reload")
+        self.window_controller.release_movement()
+        self.window_controller.press("idle_reconnect")
+        time.sleep(2)
 
     def quit_shop(self):
         self.window_controller.click(100 * self.window_controller.width_ratio, 60 * self.window_controller.height_ratio)
@@ -376,7 +417,7 @@ class StageManager:
             self.window_controller.click(*popup_location)
 
     def do_state(self, state, data=None):
-        if data is not None:
+        if data is None:
+            self.states[state]()
+        else:
             self.states[state](data)
-            return
-        self.states[state]()

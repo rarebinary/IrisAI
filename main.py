@@ -29,9 +29,11 @@ if __name__ == "__main__" and len(sys.argv) >= 9 and sys.argv[1] == "--debug-vie
 
 from adbutils import AdbError
 import logging
+import signal
 import socket
 import threading
 import time
+import traceback
 import webbrowser
 from lobby_automation import LobbyAutomation
 from play import Play
@@ -40,11 +42,25 @@ from state_finder import get_state
 from time_management import TimeManagement
 from config_loader import get_config
 from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url, load_iris_script, save_brawler_data, \
-    clean_queue, get_discord_link
-from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint
+    clean_queue
+from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint, IRIS_VERSION
 from window_controller import WindowController
 from webui import create_app
-from terminal_ui import print_splash, setup_session_logging, print_crash_banner, update_status, save_status_cursor
+from terminal_ui import setup_session_logging, print_crash_banner, render_terminal_dashboard
+from runtime_events import get_runtime_telemetry
+from runtime_paths import get_runtime_dir, runtime_path
+
+
+DEBUG_MODE = "--debug" in sys.argv
+LOG_MODE = DEBUG_MODE or "--log" in sys.argv or os.environ.get("IRIS_LOG") == "1"
+
+
+def format_state_label(state):
+    if not state:
+        return "Unknown"
+    return {
+        "match_making": "Matchmaking",
+    }.get(state, state.replace("_", " ").title())
 
 
 def apply_play_order(queue_data):
@@ -73,6 +89,7 @@ def play_alarm():
 def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
     class Main:
         def __init__(self):
+            self.telemetry = get_runtime_telemetry()
             current_playstyle = load_toml_as_dict("cfg/bot_config.toml").get("current_playstyle", "lane_up.iris")
             try:
                 self.max_ips = int(get_config("cfg/general_config.toml", "max_ips", "auto"))
@@ -121,6 +138,16 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.picked_first_brawler = False
             self.brawler_selection_stuck_count = 0
             self.current_playstyle_name = self.playstyle_info.get("name", current_playstyle.replace(".iris", ""))
+            current_brawler = self.Stage_manager.brawlers_pick_data[0] if self.Stage_manager.brawlers_pick_data else {}
+            self.telemetry.update_run(
+                bot_status="Running",
+                emulator_status="Connected",
+                brawler=current_brawler.get("brawler"),
+                trophies=self.Stage_manager.Trophy_observer.current_trophies,
+                win_streak=self.Stage_manager.Trophy_observer.win_streak,
+                playstyle=self.current_playstyle_name,
+            )
+            self.telemetry.emit("system", "Emulator connected. Initializing the run.")
             self.time_since_checked_if_brawl_stars_crashed = time.time()
             self.check_if_brawl_stars_crashed_timer = get_config("cfg/time_tresholds.toml", "check_if_brawl_stars_crashed", 20)
             self.ping_when_stuck = get_config("cfg/webhook_config.toml", "ping_when_stuck", True)
@@ -132,6 +159,11 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.Stage_manager.Trophy_observer.win_streak = current_brawler_data['win_streak']
             self.Stage_manager.Trophy_observer.current_trophies = current_brawler_data['trophies']
             self.Stage_manager.Trophy_observer.current_wins = current_brawler_data['wins'] if current_brawler_data['wins'] != "" else 0
+            self.telemetry.update_run(
+                brawler=current_brawler_data.get("brawler"),
+                trophies=self.Stage_manager.Trophy_observer.current_trophies,
+                win_streak=self.Stage_manager.Trophy_observer.win_streak,
+            )
 
         @staticmethod
         def load_models():
@@ -148,6 +180,8 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.Play.time_since_detections["player"] = time.time()
             self.Play.time_since_detections["enemy"] = time.time()
             if not self.window_controller.is_brawl_stars_running():
+                self.telemetry.update_run(emulator_status="Disconnected")
+                self.telemetry.emit("error", "Brawl Stars could not be restored after reconnecting.")
                 if get_config("cfg/webhook_config.toml", "ping_when_stuck", True):
                     screenshot = self.window_controller.screenshot()
                     notify_user("bot_is_stuck", screenshot, self.Stage_manager)
@@ -182,9 +216,11 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             if load_toml_as_dict("cfg/general_config.toml").get("alarm_enabled", True):
                 play_alarm()
             self.stop_state_checker()
-            self.window_controller.release_movement()
+            self.Play.close()
             self.window_controller.close()
             discord_bot.set_window_controller(None)
+            self.telemetry.update_run(bot_status="Stopped", emulator_status="Disconnected")
+            self.telemetry.emit("system", "Runtime stopped safely.")
 
         def start_state_checker(self):
             if self.state_checker_thread and self.state_checker_thread.is_alive():
@@ -204,7 +240,15 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
 
         def set_latest_state(self, state):
             with self.state_lock:
+                previous_state = self.state
                 self.state = state
+            if state and state != previous_state:
+                readable_state = format_state_label(state)
+                self.telemetry.update_run(current_state=readable_state)
+                if state == "match":
+                    self.telemetry.emit("match_started", "Match started.")
+                else:
+                    self.telemetry.emit("state_changed", f"State changed to {readable_state}.")
 
         def get_latest_state(self):
             with self.state_lock:
@@ -215,7 +259,7 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                 return
             self.set_latest_state(state)
 
-            print(f"State: {state}")
+            logging.debug("State: %s", state)
             frame_data = None
             self.Stage_manager.do_state(state, frame_data)
             if state != "match":
@@ -233,6 +277,7 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                 try:
                     self.set_latest_state(get_state(frame))
                 except Exception as e:
+                    self.telemetry.emit("warning", "State checker could not read the latest frame.", details=str(e))
                     print(f"State checker failed: {e}")
                     self.state_checker_stop_event.wait(0.1)
 
@@ -242,6 +287,8 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
 
             self.window_controller.release_movement()
             self.runtime_control.mark_paused()
+            self.telemetry.update_run(bot_status="Paused")
+            self.telemetry.emit("system", "Runtime paused in the lobby.")
             cprint("Iris is paused in the lobby. Waiting for Start to resume.", "#AAE5A4")
 
             while self.should_pause() and not self.should_stop():
@@ -255,6 +302,8 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
 
             if not self.should_stop():
                 self.runtime_control.mark_running()
+                self.telemetry.update_run(bot_status="Running")
+                self.telemetry.emit("system", "Runtime resumed.")
                 self.time_since_last_webhook_ping = time.time()
                 print("Pause released, resuming run.")
 
@@ -312,14 +361,12 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             fps_timer = time.perf_counter()
             fps_counter = 0
 
-            save_status_cursor()
-
             while True:
-                if self.get_latest_state() == "lobby":
-                    if self.should_stop():
-                        self.stop_gracefully()
-                        break
+                if self.should_stop():
+                    self.stop_gracefully()
+                    break
 
+                if self.get_latest_state() == "lobby":
                     if self.should_pause():
                         self.handle_pause_request()
                         if self.should_stop():
@@ -331,6 +378,8 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                 if not self.picked_first_brawler and self.get_latest_state() == "lobby":
                     if self.Stage_manager.brawlers_pick_data[0]['automatically_pick']:
                         next_brawler_name = self.Stage_manager.brawlers_pick_data[0]['brawler']
+                        self.telemetry.update_run(brawler=next_brawler_name)
+                        self.telemetry.emit("brawler_selected", f"Selecting {next_brawler_name}.")
                         print("Picking brawler automatically")
                         if self.runtime_control:
                             self.runtime_control.mark_running()
@@ -344,6 +393,8 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                             failed_brawler = self.Stage_manager.brawlers_pick_data.pop(0)
                             self.Stage_manager.brawlers_pick_data.append(failed_brawler)
                             next_brawler_name = self.Stage_manager.brawlers_pick_data[0]['brawler']
+                            self.telemetry.update_run(brawler=next_brawler_name)
+                            self.telemetry.emit("warning", f"Trying {next_brawler_name} after a selection failure.")
                             select_brawler = self.lobby_automator.select_brawler(next_brawler_name, self.get_latest_state, runtime_control=self.runtime_control)
 
                         if select_brawler == "aborted" or select_brawler == "stuck":
@@ -382,12 +433,26 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                         ips = c / elapsed
                         bd = self.Stage_manager.brawlers_pick_data[0] if self.Stage_manager.brawlers_pick_data else {}
                         bname = bd.get("brawler", "?")
-                        tro = bd.get("trophies", "?")
+                        tro = self.Stage_manager.Trophy_observer.current_trophies if hasattr(self.Stage_manager, "Trophy_observer") else bd.get("trophies", "?")
                         st = self.get_latest_state() or "?"
                         w_streak = self.Stage_manager.Trophy_observer.win_streak if hasattr(self.Stage_manager, "Trophy_observer") else None
                         wins = self.Stage_manager.Trophy_observer.current_wins if hasattr(self.Stage_manager, "Trophy_observer") else None
-                        sess = time.strftime("%H:%M:%S", time.gmtime(t_now - self.start_time))
-                        update_status(ips, bname, st, tro, self.current_playstyle_name, sess, wins, w_streak)
+                        self.telemetry.update_run(
+                            bot_status="Running",
+                            emulator_status="Connected",
+                            current_state=format_state_label(st),
+                            brawler=bname,
+                            trophies=tro,
+                            win_streak=w_streak or 0,
+                            playstyle=self.current_playstyle_name,
+                            ips=round(ips, 1),
+                        )
+                        render_terminal_dashboard(
+                            self.telemetry.snapshot(),
+                            version=IRIS_VERSION,
+                            runtime_dir=str(get_runtime_dir()),
+                            debug=DEBUG_MODE,
+                        )
                     s_time = t_now
                     c = 0
 
@@ -412,7 +477,21 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                                 break
                         continue
 
+                recovery_state = self.get_latest_state()
+                recovery_messages = {
+                    "idle_disconnect": "Idle disconnect detected. Restarting Brawl Stars.",
+                    "app_not_responding": "Brawl Stars stopped responding. Restarting the app.",
+                    "cannot_rejoin_battle": "Battle reconnect failed. Pressing Reload.",
+                }
+                if recovery_state in recovery_messages:
+                    self.telemetry.emit("warning", recovery_messages[recovery_state])
+                    self.handle_detected_state(recovery_state)
+                    continue
+
                 self.manage_time_tasks(frame)
+                if self.should_stop():
+                    self.stop_gracefully()
+                    break
 
                 brawler = self.Stage_manager.brawlers_pick_data[0]['brawler']
                 self.Play.current_brawler = brawler
@@ -434,7 +513,7 @@ def iris_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                     fps_timer = time.perf_counter()
                     fps_counter = 0
 
-    os.makedirs("debug_frames", exist_ok=True)
+    runtime_path("debug_frames", create_parent=False).mkdir(parents=True, exist_ok=True)
     main = Main()
     main.main()
 
@@ -500,34 +579,84 @@ def cli_entry_point():
 
 
 def main():
-    port = find_open_port()
-    app = create_app(iris_main, start_discord_bot=True)
-    local_url = f"http://127.0.0.1:{port}"
+    if sys.platform != "darwin":
+        raise RuntimeError("IrisAI supports macOS only.")
+    session_capture = setup_session_logging(enabled=LOG_MODE, debug=DEBUG_MODE, version=IRIS_VERSION)
+    telemetry = get_runtime_telemetry()
+    telemetry.configure_logging(
+        enabled=LOG_MODE,
+        path=str(session_capture.path) if session_capture.path else None,
+    )
+    if session_capture.path:
+        telemetry.emit("system", f"Session logging enabled: {session_capture.path}")
 
-    if sys.stdout.isatty():
-        print_splash()
-    else:
-        print("IrisAI")
+    shutdown_signal = None
+    previous_signal_handlers = {}
 
-    log_path = setup_session_logging() if os.environ.get("IRIS_LOG") != "0" else None
+    def request_graceful_shutdown(signum, _frame):
+        nonlocal shutdown_signal
+        shutdown_signal = signal.Signals(signum).name.lower()
+        raise KeyboardInterrupt
 
-    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+    graceful_signals = [signal.SIGTERM]
+    if hasattr(signal, "SIGHUP"):
+        graceful_signals.append(signal.SIGHUP)
+    for graceful_signal in graceful_signals:
+        previous_signal_handlers[graceful_signal] = signal.getsignal(graceful_signal)
+        signal.signal(graceful_signal, request_graceful_shutdown)
 
-    open_browser_later(local_url)
     sys.excepthook = _global_exception_handler
+    exit_reason = "stopped"
+    app = None
     try:
+        port = find_open_port()
+        app = create_app(iris_main, start_discord_bot=True)
+        local_url = f"http://127.0.0.1:{port}"
+        telemetry.emit("system", f"Web UI ready at {local_url}.")
+        render_terminal_dashboard(
+            telemetry.snapshot(),
+            version=IRIS_VERSION,
+            runtime_dir=str(get_runtime_dir()),
+            debug=DEBUG_MODE,
+        )
+
+        logging.getLogger('werkzeug').setLevel(logging.DEBUG if DEBUG_MODE else logging.ERROR)
+        open_browser_later(local_url)
         app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
-    except Exception:
-        print_crash_banner()
+    except KeyboardInterrupt:
+        exit_reason = shutdown_signal or "ctrl_c"
+        stop_method = shutdown_signal.upper() if shutdown_signal else "Ctrl+C"
+        telemetry.emit("system", f"Application stopped with {stop_method}.")
+    except Exception as exc:
+        exit_reason = "crashed"
+        telemetry.update_run(bot_status="Error")
+        telemetry.emit("error", "IrisAI stopped unexpectedly.", details=traceback.format_exc())
         raise
+    finally:
+        runtime_manager = getattr(app, "config", {}).get("runtime_manager") if app is not None else None
+        if runtime_manager is not None:
+            runtime_manager.shutdown(timeout=10.0)
+        for graceful_signal, previous_handler in previous_signal_handlers.items():
+            signal.signal(graceful_signal, previous_handler)
+        if exit_reason == "stopped":
+            telemetry.emit("system", "Application stopped.")
+        if session_capture.path:
+            telemetry.configure_logging(enabled=True, path=str(session_capture.path), status="saved")
+        session_capture.close(snapshot=telemetry.snapshot(), reason=exit_reason)
 
 
 def _global_exception_handler(exctype, value, tb):
     if issubclass(exctype, KeyboardInterrupt):
         sys.__excepthook__(exctype, value, tb)
         return
+    get_runtime_telemetry().update_run(bot_status="Error")
+    get_runtime_telemetry().emit("error", "IrisAI stopped unexpectedly.", details=str(value))
     print_crash_banner()
-    sys.__excepthook__(exctype, value, tb)
+    capture = getattr(sys.stderr, "capture", None)
+    if capture is not None and not capture.enabled:
+        traceback.print_exception(exctype, value, tb, file=sys.__stderr__)
+    else:
+        sys.__excepthook__(exctype, value, tb)
 
 
 if __name__ == "__main__":

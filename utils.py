@@ -6,6 +6,8 @@ import math
 import os
 import random
 import ssl
+import subprocess
+import sys
 import threading
 import time
 from io import BytesIO
@@ -19,6 +21,7 @@ import cv2
 from packaging import version
 import traceback
 from threading_utils import ThreadSafeDict
+from runtime_paths import first_existing_runtime_path, runtime_path
 
 try:
     from early_access.early_access import get_brawler_stats, get_player_info
@@ -58,12 +61,20 @@ class DefaultEasyOCR:
     def __init__(self):
         self.reader = None
         self.lock = threading.Lock()
+        self.last_engine = None
 
     def readtext(self, image_input):
+        try:
+            results = macos_vision_ocr.readtext(image_input)
+            self.last_engine = "macOS Vision"
+            return results
+        except MacOSVisionOCRError as exc:
+            print(f"WARNING: macOS Vision OCR unavailable, falling back to EasyOCR: {exc}")
         if self.reader is None:
             with self.lock:
                 if self.reader is None:
                     self.reader = self.create_reader()
+        self.last_engine = "EasyOCR"
         return self.reader.readtext(image_input)
 
     def create_reader(self):
@@ -82,7 +93,10 @@ class DefaultEasyOCR:
             except Exception as exc:
                 raise EasyOCRInitializationError(f"EasyOCR failed to load bundled models from {model_dir}: {exc}") from exc
         except ssl.SSLCertVerificationError:
-            raise EasyOCRInitializationError("EasyOCR initialization failed due to SSL certificate verification error. To fix this, please check https://discord.com/channels/1205263029269438574/1227618442073342002/1499330873538117703 for a solution.")
+            raise EasyOCRInitializationError(
+                "EasyOCR initialization failed due to an SSL certificate verification error. "
+                "See TROUBLESHOOTING.md for the macOS certificate fix."
+            )
 
     def validate_model_directory(self, model_dir):
         missing = [filename for filename in self.REQUIRED_MODELS if not (model_dir / filename).exists()]
@@ -92,6 +106,80 @@ class DefaultEasyOCR:
 
 class EasyOCRInitializationError(RuntimeError):
     pass
+
+
+class MacOSVisionOCRError(RuntimeError):
+    pass
+
+
+class MacOSVisionOCR:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.binary_path = runtime_path("bin", "macos_vision_ocr")
+        self.source_path = resolve_project_path("native", "macos_vision_ocr.swift")
+
+    def _ensure_binary(self):
+        if not self.source_path.exists():
+            raise MacOSVisionOCRError(f"missing helper source: {self.source_path}")
+        if self.binary_path.exists() and self.binary_path.stat().st_mtime >= self.source_path.stat().st_mtime:
+            return
+
+        self.binary_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            result = subprocess.run(
+                ["/usr/bin/swiftc", str(self.source_path), "-O", "-o", str(self.binary_path)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise MacOSVisionOCRError(f"could not build native OCR helper: {exc}") from exc
+        if result.returncode != 0:
+            details = (result.stderr or result.stdout).strip()
+            raise MacOSVisionOCRError(f"native OCR helper build failed: {details}")
+
+    @staticmethod
+    def _to_easyocr_results(observations):
+        results = []
+        for observation in observations:
+            x, y, width, height = observation["box"]
+            bbox = [
+                [x, y],
+                [x + width, y],
+                [x + width, y + height],
+                [x, y + height],
+            ]
+            results.append((bbox, observation["text"], observation["confidence"]))
+        return results
+
+    def readtext(self, image_input):
+        with self.lock:
+            self._ensure_binary()
+            image_path = runtime_path("ocr", "latest-frame.png")
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+            if not cv2.imwrite(str(image_path), image_input):
+                raise MacOSVisionOCRError(f"could not write OCR frame: {image_path}")
+            try:
+                result = subprocess.run(
+                    [str(self.binary_path), str(image_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise MacOSVisionOCRError(f"native OCR process failed: {exc}") from exc
+            finally:
+                image_path.unlink(missing_ok=True)
+
+            if result.returncode != 0:
+                raise MacOSVisionOCRError((result.stderr or result.stdout).strip())
+            try:
+                observations = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise MacOSVisionOCRError("native OCR returned invalid data") from exc
+            return self._to_easyocr_results(observations)
 
 
 def _get_project_root():
@@ -110,7 +198,7 @@ def resolve_project_path(*parts) -> Path:
 
 cached_toml = ThreadSafeDict()
 def load_toml_as_dict(file_path, cache=True):
-    full_path = PROJECT_ROOT / str(file_path).lstrip('/\\')
+    full_path = PROJECT_ROOT / file_path
     cache_key = str(full_path.resolve())
     if cache_key in cached_toml and cache:
         return cached_toml[cache_key]
@@ -124,20 +212,25 @@ def load_toml_as_dict(file_path, cache=True):
         return {}
 
 def invalidate_toml_cache(file_path):
-    full_path = PROJECT_ROOT / str(file_path).lstrip('/\\')
+    full_path = PROJECT_ROOT / file_path
     cache_key = str(full_path.resolve())
     cached_toml.pop(cache_key, None)
 
 
 def save_dict_as_toml(data, file_path):
-    full_path = PROJECT_ROOT / str(file_path).lstrip('/\\')
+    full_path = PROJECT_ROOT / file_path
     cache_key = str(full_path.resolve())
     with open(cache_key, 'w', encoding='utf-8') as f:
         toml.dump(data, f)
     cached_toml[cache_key] = data
 
 
+macos_vision_ocr = MacOSVisionOCR()
 reader = DefaultEasyOCR()
+
+
+def get_ocr_engine_name():
+    return reader.last_engine or "macOS Vision"
 try:
     from early_access.early_access import OFFICIAL_API
     default_api = OFFICIAL_API
@@ -168,13 +261,16 @@ def save_brawler_data(data):
     """
     Save the given data to a json file. As a list of dictionaries.
     """
-    queue_path = resolve_project_path("latest_brawler_data.json")
+    queue_path = runtime_path("latest_brawler_data.json")
     with open(queue_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 
 
 def load_brawler_data():
-    queue_path = resolve_project_path("latest_brawler_data.json")
+    queue_path = first_existing_runtime_path(
+        ("latest_brawler_data.json",),
+        Path("latest_brawler_data.json"),
+    )
     if not queue_path.exists():
         return []
     try:
@@ -203,7 +299,7 @@ def load_all_brawlers_names():
 def api_update_brawler_data(brawler_data):
     if not early_access:
         return
-    player_tag = load_toml_as_dict("cfg/general_config.toml")["player_tag"]
+    player_tag = load_toml_as_dict("cfg/general_config.toml").get("player_tag", "")
     if not player_tag:
         return
     player_info = get_player_info(player_tag)
@@ -219,7 +315,10 @@ def api_update_brawler_data(brawler_data):
 
 
 def clear_brawler_data():
-    queue_path = resolve_project_path("latest_brawler_data.json")
+    queue_path = first_existing_runtime_path(
+        ("latest_brawler_data.json",),
+        Path("latest_brawler_data.json"),
+    )
     if queue_path.exists():
         queue_path.unlink()
 
@@ -227,45 +326,53 @@ def clear_brawler_data():
 def clean_queue(data):
     cleaned_data = []
     for brawler_data in data:
-        if brawler_data['type'] not in ["trophies", "wins"]:
-            brawler_data['type'] = "trophies"
-        type_of_push = brawler_data['type']
-        if brawler_data[type_of_push] == "":
+        if not isinstance(brawler_data, dict):
+            continue
+
+        brawler_name = str(brawler_data.get("brawler", "")).strip()
+        if not brawler_name:
+            continue
+
+        type_of_push = str(brawler_data.get("type", "trophies")).strip().lower()
+        if type_of_push not in ["trophies", "wins"]:
+            type_of_push = "trophies"
+
+        if brawler_data.get(type_of_push, "") == "":
             brawler_data[type_of_push] = 0
 
-        if brawler_data['push_until'] == "":
+        if brawler_data.get('push_until', "") == "":
             if type_of_push == "wins":
                 brawler_data['push_until'] = 300
             elif type_of_push == "trophies":
                 brawler_data['push_until'] = 1000
-        value = brawler_data[type_of_push]
+        value = brawler_data.get(type_of_push, 0)
         if isinstance(value, str):
             try:
                 value = int(value)
             except ValueError:
                 value = 0
-        current_win_streak = brawler_data["win_streak"] if "win_streak" in brawler_data else 0
+        current_win_streak = brawler_data.get("win_streak", 0)
         if not isinstance(current_win_streak, int):
             try:
                 current_win_streak = int(current_win_streak)
             except ValueError:
                 current_win_streak = 0
-        automatically_pick = brawler_data["automatically_pick"]
+        automatically_pick = brawler_data.get("automatically_pick", True)
         if not isinstance(automatically_pick, bool):
             automatically_pick = str(automatically_pick).strip().lower() in {"1", "true", "yes", "on"}
-        current_wins = brawler_data["wins"]
+        current_wins = brawler_data.get("wins", 0)
         if not isinstance(current_wins, int):
             try:
                 current_wins = int(current_wins)
             except ValueError:
                 current_wins = 0
-        current_trophies = brawler_data["trophies"]
+        current_trophies = brawler_data.get("trophies", 0)
         if not isinstance(current_trophies, int):
             try:
                 current_trophies = int(current_trophies)
             except ValueError:
                 current_trophies = 0
-        push_until = brawler_data['push_until']
+        push_until = brawler_data.get('push_until', 0)
         if not isinstance(push_until, int):
             try:
                 push_until = int(push_until)
@@ -273,7 +380,7 @@ def clean_queue(data):
                 push_until = 0
 
         if value < push_until:
-            final_brawler_data = {"brawler": brawler_data['brawler'], "type": type_of_push, "trophies": current_trophies, "wins": current_wins, "push_until": push_until, "automatically_pick": automatically_pick, "win_streak": current_win_streak}
+            final_brawler_data = {"brawler": brawler_name, "type": type_of_push, "trophies": current_trophies, "wins": current_wins, "push_until": push_until, "automatically_pick": automatically_pick, "win_streak": current_win_streak}
             cleaned_data.append(final_brawler_data)
     return cleaned_data
 
@@ -355,16 +462,21 @@ def get_brawler_info(brawler_name):
         return None
 
 
+_brawlers_api_cache = None
+
 def save_brawler_icon(brawler_name):
+    global _brawlers_api_cache
     # Clean the brawler name for filename
     brawler_name_clean = brawler_name.lower().replace(' ', '').replace('-', '').replace('.', '').replace('&',
                                                                                                          '')
-    brawlers_url = "https://api.brawlify.com/v1/brawlers"
-    response = network.get(brawlers_url)
-    if response.status_code != 200:
-        print(f"Failed to fetch brawlers from API: {response.status_code}")
-        return
-    brawlers_data = response.json()['list']
+    if _brawlers_api_cache is None:
+        brawlers_url = "https://api.brawlify.com/v1/brawlers"
+        response = network.get(brawlers_url)
+        if response.status_code != 200:
+            print(f"Failed to fetch brawlers from API: {response.status_code}")
+            return
+        _brawlers_api_cache = response.json()['list']
+    brawlers_data = _brawlers_api_cache
 
     # Find the brawler in the API data
     for brawler_obj in brawlers_data:
@@ -403,9 +515,9 @@ def check_version():
         latest_version = get_latest_version()
         if latest_version:
             if version.parse(IRIS_VERSION) < version.parse(latest_version):
-                print(f"Warning: (ignore if you're using early access) You are not using the latest public version of Iris. \nCheck the discord for the latest download link.")
+                print("A newer IrisAI version is available. Check GitHub Releases: https://github.com/rarebinary/IrisAI/releases")
         else:
-            print("Error, couldn't get the version, please check your internet connection or go ask for help in the discord.")
+            print("Could not check the latest IrisAI version. Check your connection or GitHub Issues.")
 
 
 def format_notification_status(stage_manager) -> str:
@@ -433,10 +545,11 @@ def format_notification_status(stage_manager) -> str:
 
 
 def notify_user(message_type, screenshot, stage_manager) -> None:
-    user_id = load_toml_as_dict("cfg/webhook_config.toml")["discord_id"].strip()
-    webhook_url = load_toml_as_dict("cfg/webhook_config.toml")["webhook_url"].strip()
-    telegram_token = load_toml_as_dict("cfg/webhook_config.toml")["telegram_token"].strip()
-    telegram_chat_id = load_toml_as_dict("cfg/webhook_config.toml")["telegram_chat_id"].strip()
+    webhook_config = load_toml_as_dict("cfg/webhook_config.toml")
+    user_id = webhook_config.get("discord_id", "").strip()
+    webhook_url = webhook_config.get("webhook_url", "").strip()
+    telegram_token = webhook_config.get("telegram_token", "").strip()
+    telegram_chat_id = webhook_config.get("telegram_chat_id", "").strip()
     has_discord = webhook_url
     has_telegram = telegram_token and telegram_chat_id
 
@@ -541,18 +654,6 @@ def notify_user(message_type, screenshot, stage_manager) -> None:
             print(f"Error sending Telegram notification: {e}")
 
 
-def get_discord_link():
-    if api_base_url == "localhost":
-        return "https://discord.gg/xUusk3fw4A"
-    url = f'https://{api_base_url}/get_discord_link'
-    response = network.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        return data.get('link', '')
-    else:
-        return None
-
-
 def get_online_wall_model_hash():
     url = f'https://{api_base_url}/get_wall_model_hash'
     response = network.get(url)
@@ -579,9 +680,9 @@ def current_wall_model_is_latest() -> bool:
     """
     Check if the current wall model is the latest version.
     """
-    if not os.path.exists("models/tileDetector.onnx"):
+    if not (resolve_project_path("models", "tileDetector.onnx")).exists():
         return False
-    local_hash = calculate_sha256("models/tileDetector.onnx")
+    local_hash = calculate_sha256(resolve_project_path("models", "tileDetector.onnx"))
     online_hash = get_online_wall_model_hash()
     return local_hash == online_hash
 
@@ -591,7 +692,7 @@ def get_latest_wall_model_file():
     url = f'https://{api_base_url}/get_wall_model_file'
     response = network.get(url)
     if response.status_code == 200:
-        with open("./models/tileDetector.onnx", "wb") as file:
+        with open(resolve_project_path("models", "tileDetector.onnx"), "wb") as file:
             file.write(response.content)
         print("Downloaded the latest wall model.")
     else:
@@ -637,9 +738,12 @@ def mask_secret(value: str | None, keep: int = 4) -> dict:
         return {"configured": False, "masked": ""}
     if len(value) <= keep:
         return {"configured": True, "masked": "•" * len(value)}
+    masked = f"{value[:2]}{'•' * max(len(value) - (keep + 2), 2)}{value[-keep:]}"
+    if len(masked) > len(value):
+        masked = masked[:len(value)]
     return {
         "configured": True,
-        "masked": f"{value[:2]}{'•' * max(len(value) - (keep + 2), 2)}{value[-keep:]}"
+        "masked": masked
     }
 
 
@@ -652,25 +756,8 @@ def get_brawler_icon_path(brawler_name: str) -> Path | None:
         return None
 
     normalized = normalize_brawler_filename(brawler_name)
-    candidates = [
-        resolve_project_path("api", "assets", "brawler_icons", f"{normalized}.png"),
-        resolve_project_path("api", "assets", "brawler_icons2", f"{str(brawler_name).lower()}.png"),
-        resolve_project_path("api", "assets", "brawler_icons2", f"{str(brawler_name).lower().strip()}.png"),
-    ]
-
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def get_dpi_scale():
-    if os.name == "nt":
-        import ctypes
-        user32 = ctypes.windll.user32
-        user32.SetProcessDPIAware()
-        return int(user32.GetDpiForSystem())
-    return 96
+    candidate = resolve_project_path("api", "assets", "brawler_icons", f"{normalized}.png")
+    return candidate if candidate.exists() else None
 
 
 SAFE_GLOBALS = {
@@ -801,4 +888,3 @@ def clamp(x: int, low: int, high: int) -> int:
     return x
 
 JOYSTICK_RADIUS = 75
-

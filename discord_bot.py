@@ -144,7 +144,7 @@ class DiscordBot:
 
         @self.tree.command(
             name="stop",
-            description="Makes the bot stop once it reaches the lobby",
+            description="Requests an immediate bot shutdown",
         )
         async def stop(interaction: discord.Interaction):
             if not await self.require_authorized_user(interaction):
@@ -351,14 +351,14 @@ class DiscordBot:
                 "status": "Returns the current status of the bot",
                 "restart_brawl_stars": "Restarts Brawl Stars if the bot is running",
                 "view_queue": "View the current queue of the bot",
-                "add_to_queue": ("**Early Access Only :**" if not early_access else "") + "Add a brawler to the queue (only works when the bot is not running)",
-                "remove_from_queue": ("**Early Access Only :**" if not early_access else "") + "Remove a brawler from the queue (only works when the bot is not running)",
-                "clear_queue": ("**Early Access Only :**" if not early_access else "") + "Clear the current queue (only works when the bot is not running)",
-                "activate_playstyle": ("**Early Access Only :**" if not early_access else "") + "Activate a playstyle (only works when the bot is not running)",
+                "add_to_queue": ("**Optional module required:** " if not early_access else "") + "Add a brawler to the queue (only works when the bot is not running)",
+                "remove_from_queue": ("**Optional module required:** " if not early_access else "") + "Remove a brawler from the queue (only works when the bot is not running)",
+                "clear_queue": ("**Optional module required:** " if not early_access else "") + "Clear the current queue (only works when the bot is not running)",
+                "activate_playstyle": ("**Optional module required:** " if not early_access else "") + "Activate a playstyle (only works when the bot is not running)",
             }
             message = "**Available commands:**\n" + "\n".join(f"- `{command}`: {description}" for command, description in commands.items())
             if not early_access:
-                message += "\n\n**Unlock Early Access:** Obtain the early_access module from the paid channel on our Discord server: <https://discord.com/channels/1205263029269438574/1233146889843769417>"
+                message += "\n\nOptional integration commands are unavailable because the module is not installed."
             await interaction.response.send_message(
                 message,
                 ephemeral=True

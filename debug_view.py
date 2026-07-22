@@ -11,6 +11,8 @@ from multiprocessing import shared_memory
 import cv2
 import numpy as np
 
+from runtime_paths import prune_runtime_files, runtime_path
+
 
 DEFAULT_DEBUG_VIEW_FPS = 30
 DEBUG_DATA_SIZE = 262144
@@ -22,22 +24,6 @@ def _running_as_compiled_executable():
 
 
 def _get_screen_size(fallback_width, fallback_height):
-    if os.name == "nt":
-        try:
-            import ctypes
-
-            user32 = ctypes.windll.user32
-            try:
-                user32.SetProcessDPIAware()
-            except Exception:
-                pass
-            screen_width = int(user32.GetSystemMetrics(0))
-            screen_height = int(user32.GetSystemMetrics(1))
-            if screen_width > 0 and screen_height > 0:
-                return screen_width, screen_height
-        except Exception:
-            pass
-
     if not _running_as_compiled_executable():
         try:
             import tkinter
@@ -177,8 +163,6 @@ class DebugViewPublisher:
         else:
             command = [sys.executable, "-u", os.path.abspath(__file__), "--viewer-worker", *worker_args]
         kwargs = {}
-        if os.name == "nt" and hasattr(subprocess, "CREATE_NO_WINDOW"):
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         if _running_as_compiled_executable():
             self.worker_log_file = open("debug_view_worker.log", "a", encoding="utf-8")
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -404,10 +388,10 @@ class DebugClipRecorder:
         self.pending_frames.clear()
 
     def start(self, now):
-        clip_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_frames", "clips")
-        os.makedirs(clip_dir, exist_ok=True)
+        clip_dir = runtime_path("debug_frames", "clips", create_parent=False)
+        clip_dir.mkdir(parents=True, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(now))
-        self.path = os.path.join(clip_dir, f"debug_clip_{timestamp}.mp4")
+        self.path = str(clip_dir / f"debug_clip_{timestamp}.mp4")
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         self.writer = cv2.VideoWriter(self.path, fourcc, self.fps, (self.width, self.height))
         self.frames_written = 0
@@ -434,6 +418,15 @@ class DebugClipRecorder:
         self.pending_frames.clear()
         if frames_written:
             print(f"Saved debug clip: {saved_path}")
+            from utils import load_toml_as_dict
+
+            debug_config = load_toml_as_dict("cfg/debug_settings.toml")
+            prune_runtime_files(
+                runtime_path("debug_frames", create_parent=False),
+                patterns=("*.png", "*.jpg", "*.jpeg", "*.mp4"),
+                max_files=max(int(debug_config.get("debug_capture_max_files", 100)), 1),
+                max_bytes=max(int(float(debug_config.get("debug_capture_max_mb", 500)) * 1024 * 1024), 1),
+            )
 
     def close(self):
         self.stop()

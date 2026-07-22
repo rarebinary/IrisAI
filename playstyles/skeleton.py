@@ -31,6 +31,9 @@ enemy_data: List[List[float]] = []
 teammate_data: List[List[float]] = []
 """List of bounding boxes for teammates: [[x1, y1, x2, y2], ...]."""
 
+teammates_data: List[List[float]] = teammate_data
+"""Compatibility alias for teammate_data."""
+
 brawler: str = ""
 """Name of the selected brawler (e.g., 'shelly', 'colt')."""
 
@@ -79,6 +82,9 @@ height: int = 1080
 debug: bool = False
 """True if super debug mode is enabled."""
 
+center: Tuple[int, int] = (960, 540)
+"""Reference center of the 1920x1080 game frame."""
+
 # Expected Output Variable
 movement: tuple[float] = (0.0, 0.0)
 """
@@ -118,6 +124,18 @@ def is_there_enemy(enemies: List[List[float]]) -> bool:
     """Returns True if the enemy list is not empty."""
     return False
 
+def is_there_teammate(teammates: List[List[float]]) -> bool:
+    """Returns True if the teammate list is not empty."""
+    return False
+
+def count_enemies_in_area(enemies: List[List[float]], pos: Tuple[float, float], radius: float) -> int:
+    """Counts enemies within radius pixels of pos."""
+    return 0
+
+def count_teammates_in_area(teammates: List[List[float]], pos: Tuple[float, float], radius: float) -> int:
+    """Counts teammates within radius pixels of pos."""
+    return 0
+
 def attack(touch_up: bool = True, touch_down: bool = True) -> None:
     """Presses the attack button."""
     pass
@@ -156,7 +174,8 @@ def find_closest_teammate(
     walls_list: List[List[float]]
 ) -> Union[Tuple[Tuple[float, float], float], Tuple[None, None]]:
     """
-    Finds the closest teammate considering walls.
+    Finds the closest teammate. The walls argument is required for a stable
+    helper signature even though teammate selection currently ignores walls.
     Returns a tuple of (teammate_pos, distance) or (None, None).
     """
     return (0.0, 0.0), 0.0

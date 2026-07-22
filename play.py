@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from config_loader import get_config
 from detect import Detect
@@ -19,12 +19,10 @@ except ImportError:
 from state_finder import get_state
 from utils import load_toml_as_dict, count_hsv_pixels, load_brawlers_info, interpret_iris_code, \
     count_mask_pixels, JOYSTICK_RADIUS, clamp, config_bool
+from runtime_paths import prune_runtime_files, runtime_path
 
 
 brawl_stars_width, brawl_stars_height = 1920, 1080
-super_crop_area = load_toml_as_dict("./cfg/lobby_config.toml")['pixel_counter_crop_area']['super']
-gadget_crop_area = load_toml_as_dict("./cfg/lobby_config.toml")['pixel_counter_crop_area']['gadget']
-hypercharge_crop_area = load_toml_as_dict("./cfg/lobby_config.toml")['pixel_counter_crop_area']['hypercharge']
 POISON_LOW_HSV = np.array((30, 90, 221), dtype=np.uint8)
 POISON_HIGH_HSV = np.array((57, 114, 235), dtype=np.uint8)
 PLAYER_HIT_CIRCLE_RADIUS = 53
@@ -61,15 +59,25 @@ class Play:
         self.is_super_ready = False
         self.window_controller = window_controller
         self.TILE_SIZE = bot_config.get("perceived_tile_size", 54)
+        lobby_config = load_toml_as_dict("./cfg/lobby_config.toml")
+        self.super_crop_area = lobby_config['pixel_counter_crop_area']['super']
+        self.gadget_crop_area = lobby_config['pixel_counter_crop_area']['gadget']
+        self.hypercharge_crop_area = lobby_config['pixel_counter_crop_area']['hypercharge']
         self.centered_wall_detection = config_bool(bot_config.get("centered_wall_detection"), False)
         self.centered_wall_crop_size = 640
 
-        bot_config = load_toml_as_dict("cfg/bot_config.toml")
-        time_config = load_toml_as_dict("cfg/time_tresholds.toml")
-        self.verbose_debug = config_bool(load_toml_as_dict("cfg/debug_settings.toml").get('verbose_debug'), False)
-        if self.verbose_debug:
-            if not os.path.exists("debug_frames"):
-                os.makedirs("debug_frames")
+        debug_config = load_toml_as_dict("cfg/debug_settings.toml")
+        self.verbose_debug = config_bool(debug_config.get('verbose_debug'), False)
+        self.debug_capture_max_files = max(int(debug_config.get("debug_capture_max_files", 100)), 1)
+        self.debug_capture_max_bytes = max(int(float(debug_config.get("debug_capture_max_mb", 500)) * 1024 * 1024), 1)
+        self.debug_frames_dir = runtime_path("debug_frames", create_parent=False)
+        self.debug_frames_dir.mkdir(parents=True, exist_ok=True)
+        prune_runtime_files(
+            self.debug_frames_dir,
+            patterns=("*.png", "*.jpg", "*.jpeg", "*.mp4"),
+            max_files=self.debug_capture_max_files,
+            max_bytes=self.debug_capture_max_bytes,
+        )
         self.Detect_main_info = Detect(main_info_model, classes=['enemy', 'teammate', 'player'])
         self.tile_detector_model_classes = get_config("cfg/bot_config.toml", "wall_model_classes", ["wall", "bush", "close_bush"])
         self.Detect_tile_detector = None if self.centered_wall_detection else Detect(
@@ -110,7 +118,25 @@ class Play:
         self._last_frame_time = 0.0
         self._last_data_cache = None
         self._last_debug_write_time = 0.0
+        self._last_no_player_debug_time = 0.0
         self._cache_lock = threading.RLock()
+
+    def close(self):
+        self.window_controller.release_movement()
+        self._executor.shutdown(wait=True, cancel_futures=True)
+
+    def save_debug_frame(self, filename, image):
+        path = self.debug_frames_dir / filename
+        if not cv2.imwrite(str(path), image):
+            print(f"Could not save diagnostic frame: {path}")
+            return None
+        prune_runtime_files(
+            self.debug_frames_dir,
+            patterns=("*.png", "*.jpg", "*.jpeg", "*.mp4"),
+            max_files=self.debug_capture_max_files,
+            max_bytes=self.debug_capture_max_bytes,
+        )
+        return path
 
     @staticmethod
     def get_entity_pos(entity):
@@ -125,6 +151,36 @@ class Play:
         if not enemy_data:
             return False
         return True
+
+    @staticmethod
+    def is_there_teammate(teammate_data):
+        if not teammate_data:
+            return False
+        return True
+
+    @staticmethod
+    def count_enemies_in_area(enemy_data, pos, radius):
+        if not enemy_data:
+            return 0
+        count = 0
+        for enemy in enemy_data:
+            ex, ey = (enemy[0] + enemy[2]) / 2, (enemy[1] + enemy[3]) / 2
+            dist = math.hypot(ex - pos[0], ey - pos[1])
+            if dist <= radius:
+                count += 1
+        return count
+
+    @staticmethod
+    def count_teammates_in_area(teammate_data, pos, radius):
+        if not teammate_data:
+            return 0
+        count = 0
+        for teammate in teammate_data:
+            tx, ty = (teammate[0] + teammate[2]) / 2, (teammate[1] + teammate[3]) / 2
+            dist = math.hypot(tx - pos[0], ty - pos[1])
+            if dist <= radius:
+                count += 1
+        return count
 
     def attack(self, touch_up=True, touch_down=True):
         self.window_controller.press("attack", touch_up=touch_up, touch_down=touch_down)
@@ -457,9 +513,9 @@ class Play:
 
                 for direction, img in debug_regions.items():
                     if img.size > 0:
-                        cv2.imwrite(
-                            f"debug_frames/poison_gas_{direction}_debug_{ts}.png",
-                            cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                        self.save_debug_frame(
+                            f"poison_gas_{direction}_debug_{ts}.png",
+                            cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
                         )
 
         return result
@@ -491,8 +547,8 @@ class Play:
     @staticmethod
     def validate_game_data(data):
         incomplete = False
-        if "player" not in data.keys():
-            incomplete = True  # This is required so track_no_detections can also keep track if enemy is missing
+        if "player" not in data.keys() or not data["player"]:
+            incomplete = True
 
         if "enemy" not in data.keys():
             data['enemy'] = []
@@ -506,7 +562,7 @@ class Play:
         if 'bush' not in data.keys() or not data['bush']:
             data['bush'] = []
 
-        return False if incomplete else data
+        return None if incomplete else data
 
     def track_no_detections(self, data):
         if not data:
@@ -576,6 +632,11 @@ class Play:
                 "persistent_data": self.persistent_data,
                 'debug': self.verbose_debug,
                 'JOYSTICK_RADIUS': JOYSTICK_RADIUS,
+                'teammates_data': data['teammate'],
+                'is_there_teammate': self.is_there_teammate,
+                'count_enemies_in_area': self.count_enemies_in_area,
+                'count_teammates_in_area': self.count_teammates_in_area,
+                'center': (960, 540),
                 'rotate_movement': self.rotate_movement
             }
         movement = self.get_movement()
@@ -598,15 +659,18 @@ class Play:
 
     def check_if_hypercharge_ready(self, frame):
         wr, hr = self.window_controller.width_ratio, self.window_controller.height_ratio
-        x1, y1 = int(hypercharge_crop_area[0] * wr), int(hypercharge_crop_area[1] * hr)
-        x2, y2 = int(hypercharge_crop_area[2] * wr), int(hypercharge_crop_area[3] * hr)
+        x1, y1 = int(self.hypercharge_crop_area[0] * wr), int(self.hypercharge_crop_area[1] * hr)
+        x2, y2 = int(self.hypercharge_crop_area[2] * wr), int(self.hypercharge_crop_area[3] * hr)
         screenshot = frame[y1:y2, x1:x2]
         purple_pixels = count_hsv_pixels(screenshot, (137, 158, 159), (179, 255, 255))
         if self.verbose_debug:
             print("hypercharge purple pixels:", purple_pixels, "(if > ", self.hypercharge_pixels_minimum, " then hypercharge is ready)")
             if time.time() - self._last_debug_write_time >= 2.0:
                 self._last_debug_write_time = time.time()
-                cv2.imwrite(f"debug_frames/hypercharge_debug_{purple_pixels}_{int(time.time())}.png", cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR))
+                self.save_debug_frame(
+                    f"hypercharge_debug_{purple_pixels}_{int(time.time())}.png",
+                    cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR),
+                )
 
         if purple_pixels > self.hypercharge_pixels_minimum:
             return True
@@ -614,15 +678,18 @@ class Play:
 
     def check_if_gadget_ready(self, frame):
         wr, hr = self.window_controller.width_ratio, self.window_controller.height_ratio
-        x1, y1 = int(gadget_crop_area[0] * wr), int(gadget_crop_area[1] * hr)
-        x2, y2 = int(gadget_crop_area[2] * wr), int(gadget_crop_area[3] * hr)
+        x1, y1 = int(self.gadget_crop_area[0] * wr), int(self.gadget_crop_area[1] * hr)
+        x2, y2 = int(self.gadget_crop_area[2] * wr), int(self.gadget_crop_area[3] * hr)
         screenshot = frame[y1:y2, x1:x2]
         green_pixels = count_hsv_pixels(screenshot, (57, 219, 165), (62, 255, 255))
         if self.verbose_debug:
             print("gadget green pixels:", green_pixels, "(if > ", self.gadget_pixels_minimum, " then gadget is ready)")
             if time.time() - self._last_debug_write_time >= 2.0:
                 self._last_debug_write_time = time.time()
-                cv2.imwrite(f"debug_frames/gadget_debug_{green_pixels}_{int(time.time())}.png", cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR))
+                self.save_debug_frame(
+                    f"gadget_debug_{green_pixels}_{int(time.time())}.png",
+                    cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR),
+                )
 
         if green_pixels > self.gadget_pixels_minimum:
             return True
@@ -630,15 +697,18 @@ class Play:
 
     def check_if_super_ready(self, frame):
         wr, hr = self.window_controller.width_ratio, self.window_controller.height_ratio
-        x1, y1 = int(super_crop_area[0] * wr), int(super_crop_area[1] * hr)
-        x2, y2 = int(super_crop_area[2] * wr), int(super_crop_area[3] * hr)
+        x1, y1 = int(self.super_crop_area[0] * wr), int(self.super_crop_area[1] * hr)
+        x2, y2 = int(self.super_crop_area[2] * wr), int(self.super_crop_area[3] * hr)
         screenshot = frame[y1:y2, x1:x2]
         yellow_pixels = count_hsv_pixels(screenshot, (17, 170, 200), (27, 255, 255))
         if self.verbose_debug:
             print("super yellow pixels:", yellow_pixels, "(if > ", self.super_pixels_minimum, " then super is ready)")
             if time.time() - self._last_debug_write_time >= 2.0:
                 self._last_debug_write_time = time.time()
-                cv2.imwrite(f"debug_frames/super_debug_{yellow_pixels}_{int(time.time())}.png", cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR))
+                self.save_debug_frame(
+                    f"super_debug_{yellow_pixels}_{int(time.time())}.png",
+                    cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR),
+                )
 
         if yellow_pixels > self.super_pixels_minimum:
             return True
@@ -648,6 +718,8 @@ class Play:
         frame_height, frame_width = frame.shape[:2]
         crop_size = self.centered_wall_crop_size
 
+        if not player_data:
+            return frame, 0, 0
         if player_data:
             center_x, center_y = self.get_entity_pos(player_data[0])
         else:
@@ -749,24 +821,26 @@ class Play:
     def main(self, frame, brawler, main, frame_time=0.0):
         current_time = time.time()
         state = main.get_latest_state()
-
-        with self._cache_lock:
-            if state == "match" and frame_time > 0 and frame_time == self._last_frame_time and self._last_data_cache is not None:
-                data = self._last_data_cache
-                self.publish_debug_view(frame, data, state)
-                movement = self.loop(brawler, data, current_time)
-                if movement is not None:
-                    self.do_movement(movement)
-                return
-            self._last_frame_time = frame_time
+        if state != "match":
+            self.window_controller.release_movement()
+            self.publish_debug_view(frame, None, state)
+            return
 
         wall_due = current_time - self.time_since_walls_checked > self.walls_treshold
 
         if wall_due and not self.centered_wall_detection:
             main_future = self._executor.submit(self.get_main_data, frame)
             tile_future = self._executor.submit(self.get_tile_data, frame, None)
-            data = main_future.result()
-            tile_data = tile_future.result()
+            try:
+                data = main_future.result(timeout=5.0)
+            except TimeoutError:
+                print("Main model inference timed out")
+                data = {}
+            try:
+                tile_data = tile_future.result(timeout=5.0)
+            except TimeoutError:
+                print("Tile model inference timed out")
+                tile_data = None
         else:
             data = self.get_main_data(frame)
             if wall_due:
@@ -789,26 +863,38 @@ class Play:
         self.track_no_detections(data)
         if data:
             self.time_since_player_last_found = time.time()
-            if state != "match":
-                data = None
 
         if not data:
-            if current_time - self.time_since_player_last_found > 1.0:
+            missing_player_for = current_time - self.time_since_player_last_found
+            capture_due = missing_player_for > 1.0 and current_time - self._last_no_player_debug_time >= 30.0
+            proceed_due = current_time - self.time_since_last_proceeding > self.no_detection_proceed_delay
+            detected_state = get_state(frame) if capture_due or proceed_due else None
+
+            if detected_state and detected_state != "match":
+                self.window_controller.release_movement()
+                main.handle_detected_state(detected_state)
+                self.time_since_last_proceeding = current_time
+                self.publish_debug_view(frame, data, detected_state)
+                return
+
+            if missing_player_for > 1.0:
                 if isinstance(self.last_movement, (tuple, list)) and len(self.last_movement) == 2:
-                    gentle = (self.last_movement[0] * 0.3, self.last_movement[1] * 0.3)
-                    self.window_controller.move(*gentle)
+                    self.window_controller.move(*self.last_movement)
                 else:
-                    self.window_controller.move(0, -15)
-            if current_time - self.time_since_last_proceeding > self.no_detection_proceed_delay:
-                current_state = get_state(frame)
-                if current_state != "match":
-                    main.handle_detected_state(current_state)
-                    state = current_state
-                    self.time_since_last_proceeding = current_time
-                else:
-                    print("haven't detected the player in a while proceeding")
-                    self.window_controller.press("proceed")
-                    self.time_since_last_proceeding = time.time()
+                    fallback_distance = JOYSTICK_RADIUS * self.window_controller.height_ratio
+                    self.window_controller.move(0, -fallback_distance)
+                if capture_due:
+                    frame_path = self.save_debug_frame(
+                        f"no-player-{int(current_time)}.png",
+                        cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                    )
+                    self._last_no_player_debug_time = current_time
+                    if frame_path:
+                        print(f"No player detected; diagnostic frame saved: {frame_path}")
+            if proceed_due:
+                print("haven't detected the player in a while proceeding")
+                self.window_controller.press("proceed")
+                self.time_since_last_proceeding = time.time()
             self.publish_debug_view(frame, data, state)
             return
         self.time_since_last_proceeding = time.time()
