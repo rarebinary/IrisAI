@@ -1,7 +1,7 @@
 # IrisAI
 
 <p align="center">
-  <img src="images/logo.png" alt="IrisAI logo" width="160">
+  <img src="images/irisai-runbook.svg" alt="IrisAI runbook logo" width="144">
 </p>
 
 <p align="center"><strong>See the grind. Automate it.</strong></p>

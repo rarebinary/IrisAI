@@ -45,4 +45,6 @@ page-load choreography and respect `prefers-reduced-motion`.
 ## Brand Mark
 
 Use the IrisAI Runbook mark as a small, single-color route-and-page symbol next
-to the product name. It supports orientation and is not a hero image.
+to the product name. It supports orientation and is not a hero image. The
+canonical repository asset is `images/irisai-runbook.svg`; keep derivatives
+visually aligned with that mark.

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">IrisAI runbook mark</title>
+  <desc id="desc">An open runbook page containing a connected route.</desc>
+  <g fill="none" stroke="#6973b7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M35 22.5h62.5c15 0 27.5 12.5 27.5 27.5v82.5H57.5C45 132.5 35 142.5 35 155V22.5Z"/>
+    <path d="M52.5 47.5h40M52.5 67.5h30"/>
+    <path d="M60 107.5c10.5-15 22-5.5 26.5-18 3-8 8-11.5 16-12"/>
+    <circle cx="58.5" cy="109" r="7" fill="#6973b7" stroke="none"/>
+    <circle cx="107" cy="77" r="7" fill="#6973b7" stroke="none"/>
+  </g>
+</svg>
