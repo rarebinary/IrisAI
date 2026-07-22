@@ -1,10 +1,10 @@
 # IrisAI Documentation
 
-**Version:** 0.8.14 | **Purpose:** Autonomous bot for Brawl Stars (Supercell) | **License:** CC BY-NC 4.0
+**Version:** 0.0.1 | **Purpose:** macOS Brawl Stars automation bot | **License:** CC BY-NC 4.0
 
 ## Overview
 
-IrisAI is a computer-vision-based game automation bot for Brawl Stars. It uses ADB + scrcpy for screen mirroring and touch injection, YOLO ONNX models for real-time object detection, EasyOCR for text recognition, and a custom Python scripting system (`.iris` files) for in-game behavior.
+IrisAI is a computer-vision-based game automation bot for Brawl Stars. It uses ADB + scrcpy for screen mirroring and touch injection, YOLO ONNX models for real-time object detection, macOS Vision with an EasyOCR fallback for text recognition, and a custom Python scripting system (`.iris` files) for in-game behavior.
 
 ## Quick Reference
 
@@ -16,8 +16,9 @@ IrisAI is a computer-vision-based game automation bot for Brawl Stars. It uses A
 | `state_finder.py` | Game screen state detection via template matching |
 | `window_controller.py` | ADB + scrcpy device control |
 | `detect.py` | YOLO ONNX model inference wrapper |
-| `lobby_automation.py` | Brawler selection via EasyOCR |
+| `lobby_automation.py` | Text-based brawler selection via macOS Vision/EasyOCR |
 | `trophy_observer.py` | Trophy/win tracking & match history |
+| `runtime_events.py` | Shared current-run telemetry for the terminal and Web UI |
 | `time_management.py` | Periodic task scheduler |
 | `discord_bot.py` | Discord remote control commands |
 | `debug_view.py` | Real-time debug visualization overlay |
@@ -40,4 +41,6 @@ IrisAI is a computer-vision-based game automation bot for Brawl Stars. It uses A
 - [WEBUI.md](WEBUI.md) — Flask web UI
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Setup, build, and deployment
 - [EXTENDING.md](EXTENDING.md) — How to extend the bot
-- [GRAPHS.md](GRAPHS.md) — Graphify knowledge graph reference
+- [DESIGN.md](DESIGN.md) — Product interface design system
+- [PRODUCT.md](PRODUCT.md) — Product audience, purpose, and principles
+- [CODEBASE_AUDIT.md](CODEBASE_AUDIT.md) — Latest bug audit, fixes, and stability/distribution recommendations

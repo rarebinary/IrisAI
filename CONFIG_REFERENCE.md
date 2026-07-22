@@ -4,7 +4,7 @@
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `cpu_or_gpu` | string | `"auto"` | Compute device: `cpu`, `cuda`, `coreml`, `directml`, `auto` |
+| `cpu_or_gpu` | string | `"auto"` | macOS inference mode: `auto`, `coreml`, or `cpu` |
 | `max_ips` | int/string | `"auto"` | Max iterations per second. `"auto"` = unlimited |
 | `trophies_multiplier` | float | `1.0` | Multiply trophy gains/losses |
 | `run_for_minutes` | int | `60` | Auto-stop after N minutes. `0` = no limit |
@@ -16,7 +16,7 @@
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `current_playstyle` | string | `"default_up.iris"` | Active playstyle script |
+| `current_playstyle` | string | `"aggressive_universal.iris"` | Active playstyle script |
 | `play_again_on_win` | bool | `true` | Auto-click "Play Again" after victory |
 | `minimum_movement_delay` | float | `0.05` | Minimum seconds between movement updates |
 | `unstuck_movement_delay` | int | `20` | Seconds before stuck rotation triggers |
@@ -39,5 +39,5 @@
 | `ping_when_target_is_reached` | bool | Notify when brawler reaches target |
 
 ## Environment Variables (.env)
-All webhook settings can be set via environment variables with `PYLA_` prefix.
+All webhook settings can be set via environment variables with `IRIS_` prefix.
 See `.env.example` for the full list.

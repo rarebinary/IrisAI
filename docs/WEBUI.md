@@ -23,7 +23,6 @@ WSGI factory function. Creates Flask app, registers blueprints, configures loggi
 | Method | Route | Handler | Description |
 |--------|-------|---------|-------------|
 | GET | `/` | — | Serve index.html |
-| GET | `/api/settings` | WebDataService | All settings sections |
 | GET | `/api/settings/<section>` | WebDataService | Single setting section |
 | PUT | `/api/settings/<section>` | WebDataService | Update single section |
 | POST | `/api/settings/<section>/reset` | WebDataService | Reset section to defaults |
@@ -46,7 +45,8 @@ WSGI factory function. Creates Flask app, registers blueprints, configures loggi
 | GET | `/api/player-info` | WebDataService | Player info from API |
 | GET | `/api/history` | WebDataService | Match history |
 | GET | `/api/bootstrap` | WebDataService | Initial load data (all state) |
-| GET | `/api/login/validate` | WebDataService | Validate API key |
+| GET | `/api/health` | WebDataService | Health check payload |
+| POST | `/api/login/validate` | WebDataService | Validate API key |
 | GET | `/api/assets/brawlers/<name>` | — | Brawler icon asset |
 | GET | `/api/assets/support/<filename>` | — | Support image |
 
@@ -71,6 +71,10 @@ Manages bot lifecycle with a worker thread:
 - `get_status()` → returns state, is_running, last_error. Auto-idles if thread died.
 - `_run_worker()` → wraps `iris_main()` with try/except, handles `SystemExit` and generic errors
 
+`get_status()` also includes the shared telemetry snapshot. This keeps the Web UI
+and terminal dashboard on the same view of the active run instead of making the
+browser infer status from raw log lines.
+
 ### States
 ```
 idle → running → pausing → paused → running ...
@@ -78,7 +82,8 @@ idle → running → pausing → paused → running ...
                 → error → idle
 ```
 
-Note: Stop/pause signals are only honored when the main thread's state is `"lobby"` (to avoid interrupting active matches).
+Stop requests are asynchronous and are checked immediately by the main loop.
+Pause requests wait for the lobby so Iris does not leave a match half-finished.
 
 ## services.py — WebDataService
 
@@ -91,11 +96,12 @@ Data access layer for the web UI.
 - `load_startup_queue_if_enabled()` — restore queue from file on boot
 
 ### Settings Management
-Schema-based serialization for 6 config sections:
-- `general`, `bot`, `lobby`, `buttons`, `webhook`, `debug`
+Schema-based serialization for 5 exposed config sections:
+- `general`, `bot`, `timers`, `webhook`, `debug`
 - Each section has typed fields with defaults
 - `serialize()` / `deserialize()` for JSON ↔ TOML conversion
 - `reset_settings()` per section
+- Queue imports go through the same normalization as runtime startup, so malformed JSON items are ignored instead of crashing the request.
 
 ### Playstyle Management
 - List playstyles from `playstyles/` directory
@@ -104,9 +110,16 @@ Schema-based serialization for 6 config sections:
 - Import playstyle from uploaded `.iris` file
 
 ### Match History
-- Load from `cfg/match_history.csv`
+- Load from `.iris_runtime/match_history.csv`, with one-time compatibility for
+  the former `cfg/match_history.csv` location
 - Aggregate stats (wins/losses per brawler, win rates)
-- Build response payload for charts
+- Build response payload for charts and a cross-brawler `recent_matches` list
+  limited to the newest 10 entries
+- Return an empty history payload on a fresh install instead of failing bootstrap
+
+Masked webhook credentials are display-only placeholders. The service ignores
+those placeholder values during autosave so changing another setting cannot
+replace an existing token or URL.
 
 ### Player Info
 - Fetch from Brawlify API / BS API
@@ -121,12 +134,23 @@ Schema-based serialization for 6 config sections:
 - Player info
 - Brawler catalog
 - Runtime status
+- Health check summary
+
+### Health Check
+
+The bootstrap and `/api/health` response include the health summary from
+`health.py`. It checks config readability, runtime directory writability, model
+presence/hash status, EasyOCR model presence, optional Python dependencies, and
+ADB availability. Blocking issues should be fixed before pressing Start;
+warnings usually mean an optional feature or packaging dependency needs
+attention.
 
 ## Frontend
 
 ### templates/index.html
 Single-page application with sections:
-- Dashboard / Status
+- Runbook dashboard with a status strip, Current Run, Recent Activity, and Last
+  10 Matches
 - Queue management (table with drag reorder)
 - Settings (6 config sections with forms)
 - Playstyles (grid of available scripts)
@@ -142,12 +166,56 @@ Vanilla JavaScript:
 - Queue item CRUD
 - Playstyle import/upload
 
+#### Dashboard behavior
+
+The Dashboard is an operational overview rather than a live debug console:
+
+- **Status strip**: bot status, emulator status, game state, and active
+  playstyle.
+- **Current Run**: brawler, trophies, win streak, last result, and session
+  totals.
+- **Recent Activity**: the latest ten readable events. The separate **Debug
+  logs** tab exposes their technical details only when needed.
+- **Last 10 Matches**: compact result rows with brawler, mode (when known),
+  and trophy change. Victory uses the success color; Defeat uses the danger
+  color.
+- **Session log notice**: when IrisAI starts with `--log` or `--debug`, a green
+  notice confirms recording and shows the absolute file path. This makes the
+  diagnostic file easy to locate after the session.
+
+The theme control stores the selected `light` or `dark` theme in browser local
+storage. Light is the default. Both themes use the CSS tokens defined at the top
+of `static/css/tailwind.css`; components must use semantic tokens rather than
+hardcoded colors.
+
+Tooltips are rendered as plain text. Match labels from history never pass
+through an HTML sink.
+
+The old queue dock is intentionally limited to the Brawlers view so it cannot
+compete with the Dashboard's three operational areas.
+
 ### static/css/tailwind.css
-Pre-built Tailwind CSS (compiled). Custom styles for the dashboard layout.
+Project CSS for the application shell and components. The top-level tokens define
+surfaces, text, borders, accent, success, danger, and warning for both themes.
+
+## Shared Runtime Telemetry
+
+`runtime_events.py` owns a bounded, thread-safe in-memory telemetry snapshot.
+It is updated by `main.py`, `webui/runtime.py`, and `trophy_observer.py` and is
+returned in `/api/runtime/status`.
+
+Supported event kinds are `state_changed`, `brawler_selected`, `match_started`,
+`match_finished`, `warning`, and `error` (plus `system` for lifecycle messages).
+Each event has a short user-facing message and optional technical details. The
+store keeps the latest 300 events and ten matches; it is intentionally a live
+session view, not a replacement for CSV match history or session log files.
+The same snapshot includes a `logging` object with `enabled`, `status`, and
+`path`, which drives the Dashboard recording notice.
 
 ## Error Handling
 - `KeyError`, `FileNotFoundError`, `ValueError` → returns 400
 - All other exceptions → returns 500 with error details
+- Legacy API-key checks use the shared `network.py` timeout/retry client.
 
 ## Running the Web UI
 

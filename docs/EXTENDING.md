@@ -129,14 +129,10 @@ The plugin can extend:
 - Premium playstyles
 - Additional detection capabilities
 
-## API (api/api.py)
+## Remote API Integration
 
-Provides endpoints for uploading match results and fetching player data. Extend for custom analytics:
-- POST `/api/results` — receive match results
-- POST `/api/matches` — batch match submission
-- GET `/get_brawler_list` — fetch all brawlers
-- GET `/get_brawler_info` — fetch brawler details
-- GET `/check_version` — version check
-- `/check` endpoint — health check
-- Player info retrieval from Brawlify API
-- Brawler catalog and icon download
+Remote calls are made through `network.py`. Match uploads use
+`trophy_observer.py`, while brawler metadata and icons are refreshed through
+the helpers in `utils.py`. Keep remote features optional and preserve the local
+catalog under `cfg/brawlers_info.json` and `api/assets/brawler_icons/` as a
+fallback when the network is unavailable.

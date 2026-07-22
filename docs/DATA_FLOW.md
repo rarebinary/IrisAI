@@ -20,8 +20,8 @@
 │  │                      Main.main()                                 │  │
 │  │                                                                   │  │
 │  │  1. Get latest frame from scrcpy (frame + timestamp)              │  │
-│  │  2. Check if frame changed (dedup by timestamp)                  │  │
-│  │  3. If state=="lobby": check stop/pause signals                  │  │
+│  │  2. ~~Check if frame changed (dedup by timestamp)~~ Removed (Bug 17 — dead code) │  │
+│  │  3. Check stop immediately; apply pause when state=="lobby"      │  │
 │  │  4. Auto-pick first brawler if not yet picked                    │  │
 │  │  5. Check run timer / cooldown (3min after target)               │  │
 │  │  6. Print IPS every second                                       │  │
@@ -49,8 +49,8 @@
 │  │  ┌──────────────────────────────────────────────────────────────┐  │  │
 │  │  │                   Play.loop()                                 │  │
 │  │  │  Build context dict:                                           │  │
-│  │  │   entities, walls, abilities, ranges, hit_circles,            │  │
-│  │  │   poi.json_gas, joystick, loop_count, game_state...           │  │
+│  │  │   entities, walls, abilities, ranges, movement helpers,       │  │
+│  │  │   persistent script data, screen size, and map center         │  │
 │  │  │                                                                │  │
 │  │  │  interpret_iris_code(context) → movement (x, y)               │  │
 │  │  └──────────────────────────┬───────────────────────────────────┘  │

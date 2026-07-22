@@ -25,7 +25,7 @@ Provides remote control of the bot via Discord slash commands. Runs in its own t
 | `/status` | Shows current bot status |
 | `/restart_brawl_stars` | Restarts the game app |
 | `/view_queue` | Shows the current brawler queue with trophies and targets |
-| `/help` | Shows available commands (mentions early_access if unavailable) |
+| `/help` | Shows the available commands |
 
 ## Early Access Commands
 

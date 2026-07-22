@@ -25,17 +25,17 @@ iris_main(discord_bot, queue_data, stop_event, runtime_control)
 ```
 
 ### Entry Point (`main()` at module level)
-1. Print splash screen (ASCII art logo with cyan box)
-2. Set up session logging via `terminal_ui.setup_session_logging()` — logs go to `logs/session_<timestamp>.log` only (not duplicated to terminal); terminal shows splash + live status bar + crash banner only
+1. Initialize the fixed terminal dashboard with the IrisAI ASCII wordmark
+2. Set up optional session logging via `terminal_ui.setup_session_logging()`; `--log` writes under `.iris_runtime/logs/` and `--debug` also mirrors technical output
 3. Start Flask web UI on first available port (5185+)
 4. Flask werkzeug HTTP logging suppressed (`logging.ERROR`) to avoid log spam in terminal
-4. Install `sys.excepthook` to show crash banner on unhandled exceptions
+5. Install `sys.excepthook` to show crash banner on unhandled exceptions
 
 ### Main.main() Loop
-1. If state == "lobby": check stop/pause signals (honored only in lobby)
+1. Honor stop immediately; apply pause once the state reaches `"lobby"`
 2. Auto-pick first brawler if not yet picked (on failure, rotate to end of queue and retry; max 3 "stuck" retries before continuing with current selection)
 3. Enforce `run_for_minutes` timer (3min cooldown after target expires)
-4. Print status line every second (~1 IPS): `IPS | Brawler | State | Trophies | Playstyle | Session Time` via `update_status()` (saves cursor at start of loop, restores + clears on each update to handle terminal resize)
+4. Redraw the fixed System, Current Run, Last Matches, and Recent Events dashboard about once per second
 5. Periodically check for BS crashes via `device.app_current()`
 6. Get latest frame; if stale >15s → release movement, reconnect scrcpy; if >30s → restart BS
 7. Call `manage_time_tasks(frame)`:
@@ -43,7 +43,7 @@ iris_main(discord_bot, queue_data, stop_event, runtime_control)
    - No-detections timeout (>8min) → restart BS
    - Idle check → call `lobby_automator.check_for_idle(frame)`
    - Periodic webhook pings
-8. Call `Play.main(frame, brawler, main, last_frame_time)` for in-game AI
+8. Dispatch recovery alerts immediately; call `Play.main(frame, brawler, main, last_frame_time)` for in-game AI
 9. Throttle to `max_ips` if configured
 10. Warn if IPS < 15
 
@@ -55,6 +55,7 @@ iris_main(discord_bot, queue_data, stop_event, runtime_control)
 - `should_stop()` / `should_pause()` — Check `stop_event` or `runtime_control` signals.
 - `sleep_interruptible(duration, allow_pause)` — Sleeps with stop/pause polling, returns interruption reason.
 - `stop_gracefully()` — Releases joystick, stops state checker, closes window controller.
+- Queue input is normalized before runtime startup. Malformed entries are skipped, missing counters default to `0`, and empty brawler names are rejected.
 
 ---
 
@@ -80,16 +81,14 @@ The core in-game behavior system. All entity detection, movement, and combat log
 
 ```
 Play.main(frame, brawler, main, frame_time=0.0)
-  ├── Dedup if state=="match" and frame_time unchanged (reuse cache)
-  ├── Always run detection (main + tile) regardless of state
+  ├── If state != "match": release movement and skip inference
   ├── Parallel inference (ThreadPoolExecutor with 2 workers):
   │   ├── get_main_data() — entity YOLO detection
   │   └── get_tile_data() — wall/bush detection (only if due, and not centered mode)
   ├── Process tile data → separate walls from bushes
   ├── Validate game data, track no-detection timers
-  ├── If state != "match": null data (so no movement/combat outside match)
   ├── If data invalid: gentle movement, check no_detection_proceed delay,
-  │   may press "proceed" or re-detect state (PylaAI original behavior)
+  │   may press "proceed" or re-detect state (legacy behavior)
   ├── Check super/gadget/hypercharge readiness (HSV pixel counting in crops, at intervals)
   ├── Check poison gas (HSV masking around player, returns directional dict)
   └── Play.loop(brawler, data, current_time)
@@ -99,10 +98,19 @@ Play.main(frame, brawler, main, frame_time=0.0)
         └── unstuck_movement_if_needed(movement) → rotated vector if stuck
 ```
 
-**PylaAI compat note:** Unlike the original, data is nulled AFTER detection (not before), so
-detection always runs even in non-match states. The proceed/no-detection fallback from
-PylaAI is preserved. Frame dedup only triggers when `state=="match"` to avoid stale
-data across state transitions.
+When the entity model cannot find the player, Iris keeps the last full movement
+or applies a full-radius upward fallback so the joystick clears its dead zone.
+It also saves a diagnostic frame at most once every 30 seconds under
+`.iris_runtime/debug_frames/no-player-<timestamp>.png`; `--log` records the path.
+Before saving, Iris confirms that the current frame is still a playable match.
+The debug directory retains only the newest 100 captures and never exceeds the
+configured 500 MB storage budget; training captures are stored separately and
+are never pruned by this policy.
+Session logs record when joystick input starts and confirm its active target every
+ten seconds. Failed scrcpy touch-down or move operations remain inactive and are
+written as explicit movement errors.
+
+Loading, match-intro, spectator, lobby, and recovery states never run model inference or send joystick input. The no-player fallback is reserved for frames currently classified as playable matches.
 
 ### Detection Systems
 
@@ -150,10 +158,8 @@ If movement direction hasn't changed for `unstuck_movement_delay` seconds (confi
 Generic ONNX inference wrapper for YOLO models.
 
 ### Provider Selection (priority)
-1. CUDA (NVIDIA GPU) → `TensorrtExecutionProvider` / `CUDAExecutionProvider`
-2. CoreML (Apple Silicon) → `CoreMLExecutionProvider`
-3. DirectML (Windows) → `DmlExecutionProvider`
-4. CPU → `CPUExecutionProvider`
+1. CoreML on Apple Silicon → `CoreMLExecutionProvider`
+2. CPU fallback on every supported Mac → `CPUExecutionProvider`
 
 ### Pipeline
 ```
@@ -188,7 +194,7 @@ States and their handlers (from `self.states` dict):
 | State | Handler | Action |
 |-------|---------|--------|
 | `lobby` | `start_game()` | Check trophy/wins targets, queue next brawler, press proceed |
-| `match_making` | — | Wait (auto) |
+| `match_making` | — | Healthy queue state; wait without movement or forced restart |
 | `match` | — | Delegate to `Play.main()` |
 | `brawler_selection` | `lambda: 0` | No-op (handled by start_game's auto-select logic) |
 | `shop` | `quit_shop()` | Click top-left corner to close |
@@ -199,7 +205,12 @@ States and their handlers (from `self.states` dict):
 | `trophy_reward` | `press("proceed")` | Trophy reward screen |
 | `prestige_milestone` | `press("continue_or_equip")` | Prestige milestone |
 | `nano_noodles` | `click_nano_noodles()` | Special event |
-| `idle_disconnect` | `handle_idle_disconnect()` | Restart BS on idle/disconnect |
+| `idle_disconnect` | `handle_idle_disconnect()` | Restart BS immediately on idle/disconnect |
+| `app_not_responding` | `handle_app_not_responding()` | Release controls and restart BS |
+| `cannot_rejoin_battle` | `handle_cannot_rejoin_battle()` | Release controls and press Reload |
+| `loading` | No-op | Keep inference and controls paused |
+| `match_intro` | No-op | Wait for the playable field before starting the joystick |
+| `spectating` | No-op | Keep controls released while following a teammate |
 
 ### start_game()
 1. Wait 3s for API update (early_access)
@@ -209,6 +220,10 @@ States and their handlers (from `self.states` dict):
 5. Handle play order rotation
 6. Send match webhook ping if due
 7. Press the "proceed" button to start match
+
+### Resolution-Sensitive Clicks
+
+Coordinates are stored as 1920×1080 reference positions and scaled by `WindowController`. Event-specific clicks such as Nano Noodles pass unscaled reference offsets into `WindowController.click(..., already_include_ratio=False)` so non-1080p emulators do not apply the width ratio twice.
 
 ### end_game()
 1. Loop up to 35s while state starts with "end"
@@ -230,24 +245,30 @@ States and their handlers (from `self.states` dict):
 ### Detection Priority Order
 1. End-of-match results (victory/defeat/draw/showdown placement via `find_game_result()`)
 2. Lobby → `lobby_menu.png`
-3. Match making → `exit_match_making.png`
+3. Matchmaking → `exit_match_making.png`
 4. Brawler selection → `brawler_menu_heart.png`
 5. Shop → `powerpoint.png`
 6. Offer popup → `close_popup.png`
 7. Brawl pass → `brawl_pass_house.png`
 8. Star road → `go_back_arrow.png`
 9. Prestige milestone → `prestige_continue.png`
-10. Nano noodles → `nano_noodles.png`
+10. Nano Noodles → `nano_noodles_daily_wins.png` title signature (threshold 0.8)
 11. Star drops (4 types: regular, angelic, demonic, starr_nova)
 12. Trophy reward screen → `trophies_screen.png`
-13. Idle/disconnect → `idle_disconnect.png` (threshold 0.6)
-14. Default: "match"
+13. Android app not responding → restart Brawl Stars
+14. Cannot rejoin battle → press Reload
+15. App/loading screen → pause inference and controls
+16. Match intro (`VS`) → wait with controls released
+17. Spectating (`Following:`) → wait with controls released
+18. Idle/disconnect → restart Brawl Stars
+19. Default: "match"
 
 ### How It Works
 - Uses `cv2.matchTemplate` with `TM_CCOEFF_NORMED` on template images from `images/states/`
 - Region-based matching from `lobby_config.toml` → `template_matching` section
 - Each state has a defined region of interest and confidence threshold (default 0.75, idle at 0.6)
 - Templates are cached globally by `(path, width, height)` key
+- Empty crops and templates larger than their configured region return `False` instead of raising an OpenCV assertion error.
 - `find_game_result()` checks `images/end_results/` for:
   - Showdown placement (1st-4th) with `SHOWDOWN_PLACE_THRESHOLD = 0.9`
   - Victory, defeat, draw templates
@@ -309,7 +330,9 @@ States and their handlers (from `self.states` dict):
 1. Click brawlers menu button, wait 0.5s
 2. Loop up to 100 iterations:
    - Take screenshot, downsize by `ocr_scale_down_factor` (clamped 0.5-1.0, from `general_config.toml`)
-   - Run EasyOCR via `extract_text_and_positions()`
+   - Run OCR via `extract_text_and_positions()`
+   - On macOS, use Apple's native Vision text recognition helper for the stylized Brawl Stars font
+   - Fall back to EasyOCR when the native helper cannot be built or started
    - Clean up OCR results (remove spaces/dots/hyphens)
    - Run **template matching** on full-resolution screenshot (`is_in_brawler_selection`, `is_in_lobby` from `state_finder`) to determine actual screen state
    - If template confirms brawler_selection → proceed with OCR matching regardless of OCR text
@@ -321,6 +344,10 @@ States and their handlers (from `self.states` dict):
 3. Returns: `"success"`, `"failed"`, `"error"`, `"aborted"`, or `"stuck"`
 4. Supports interruptible sleep with stop/pause checking
 5. In `main.py`, if `select_brawler` returns "stuck" 3+ times, the bot skips auto-pick and continues with the current brawler selection (prevents infinite retry loops)
+
+The macOS helper source is `native/macos_vision_ocr.swift`. Iris compiles it once
+into `.iris_runtime/bin/` and reuses the cached executable. Diagnostic session
+logs include the OCR engine and every detected text value during selection.
 
 ### check_for_idle()
 - Crops center area `(460..1460, 400..675)`
@@ -352,7 +379,8 @@ Complex range-based system per trophy bracket:
 - End-game loss threshold protection (stops losing at configured limits)
 
 ### Match History
-- Saved to `cfg/match_history.csv` via pandas DataFrame
+- Saved to `.iris_runtime/match_history.csv` via pandas DataFrame; an existing
+  legacy `cfg/match_history.csv` is copied into the first runtime save
 - Columns: datetime, brawler, game_mode, result, trophy_change, trophies, win_streak
 - `send_results_to_api()` pushes unsent matches to `https://{api_base_url}/api/matches` (disabled on localhost)
 - Logged: win_streak, lose_streak, total_losses, match_counter
@@ -482,6 +510,7 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
 - `start()`: If paused → resume. If idle → start new thread (with auth + queue checks)
 - `pause()`: Running → pausing. Already paused → ok.
 - `stop()`: Handles idle/paused/running states appropriately
+- `shutdown(timeout)`: Requests a stop and joins the runtime worker before the Python process exits
 - `get_status()`: Returns state, is_running, last_error. Auto-transitions to "idle" if thread died.
 
 ### services.py — WebDataService
@@ -503,24 +532,16 @@ All Android keycodes (`KEYCODE_*`), action constants (`ACTION_DOWN/UP/MOVE`), ev
 
 ## terminal_ui.py — Terminal UI (Splash, Dashboard, Logging)
 
-**Standalone module** — no dependencies on other project modules (only `os`, `sys`, `time`, `datetime`).
+The module uses `runtime_paths.py` for the configured runtime directory and only
+otherwise depends on the Python standard library.
 
 ### Components
 
 | Function | Purpose |
 |----------|---------|
-| `print_splash()` | Prints IrisAI ASCII logo (cyan box, red→yellow gradient title via `_apply_gradient()`) |
-| `print_crash_banner()` | Prints bold red "BOT CRASHED" banner with link to logs |
-| `setup_session_logging()` | Tee's `sys.stdout`/`sys.stderr` to both console and `logs/session_<timestamp>.log`. Sets up `LOG_DIR` if missing. Returns log path. |
-| `build_status_line(...)` | Internal helper — builds plain status string, called by `update_status()` |
-| `save_status_cursor()` | Saves cursor position with `\033[s` before main loop starts |
-| `update_status(...)` | Restores to saved cursor via `\033[u`, clears to end of screen via `\033[J`, prints status with animated red→yellow gradient (shifts 3px/sec via `_gradient_offset`). Handles terminal resize without artifacts. |
-
-### Animated Gradient
-
-- `_apply_gradient(text, offset=0)` — Per-character red→yellow gradient. Each character gets `\033[38;2;255;{g};0m` where `g = int(255 * ((i + offset) % w) / w)`. Applied to both the ASCII logo in the splash box and the dashboard status line.
-- `_gradient_offset` — Module-level counter incremented by `_SHIFT_SPEED = 3` each call to `update_status()`. Creates smooth scrolling animation (full cycle ~19s for 58-char logo).
-- Cache: `_figlet_cache` stores raw figlet output by `(text, font)` key to avoid re-rendering on each splash redraw.
+| `print_crash_banner()` | Prints a compact crash banner directly to the terminal |
+| `setup_session_logging()` | Captures technical output when `--log` or `--debug` is active |
+| `render_terminal_dashboard()` | Draws the fixed System, Current Run, Last Matches, and Recent Events view |
 
 ### Style Class
 
@@ -530,20 +551,23 @@ ANSI escape code constants for 24-bit terminal colors:
 
 ### Session Logging
 
-- All output goes to `logs/session_<timestamp>.log` (rotated per launch) via FileLogger (not Tee)
-- Terminal shows only splash + live status bar + crash banner (via `_tty()` which uses `sys.__stdout__`)
-- `print()` and logging go to file only — no terminal echo
-- `*.log` and `logs/` are gitignored
-- Disable with `IRIS_LOG=0` env var
-- Crash banner shown via `sys.excepthook` override + try/except around `app.run()`
-- `KeyboardInterrupt` passes through without crash banner
+- `python3 main.py --log` writes a timestamped file under `.iris_runtime/logs/`.
+- `--debug` enables the same capture and mirrors technical output to the terminal.
+- Normal mode suppresses noisy internal prints while keeping the fixed dashboard visible.
+- Each saved log ends with the exit reason and a JSON session snapshot.
+- `Ctrl+C`, `SIGTERM`, normal exit, and `atexit` all finalize the log.
+- A crash without logging still prints its traceback directly to the terminal.
 
-### PylaAI Critical Bugfixes (2026-07-21)
+### Critical Bugfixes (2026-07-21)
 
 | # | File | Issue | Fix |
 |---|------|-------|-----|
 | 1 | `play.py:attack()` | `delay=0.001` was too fast for ADB/scrcpy; game didn't register taps | Removed explicit delay, uses `press()` default `0.02` |
-| 2 | `window_controller.py:click()` | Default delay `0.005` (vs PylaAI's `0.02`) made all clicks too fast | Restored `delay=0.02` |
+| 2 | `window_controller.py:click()` | Default delay `0.005` (vs IrisAI's `0.02`) made all clicks too fast | Restored `delay=0.02` |
 | 3 | `play.py:loop()` context | Provided dynamic `width`/`height` (actual framebuffer res) instead of constants `1920×1080` | Now uses `brawl_stars_width`/`brawl_stars_height` constants |
-| 4 | `play.py:main()` early return | `if state != "match": return` skipped detection + proceed fallback entirely | Moved state check after detection (PylaAI original pattern); data is nulled after inference, not before |
-| 5 | `utils.py:interpret_iris_code()` | No `is_safe_ast()` validation, no `__builtins__={}` sandbox | Added AST security check + builtins hardening
+| 4 | `play.py:main()` state guard | Non-match screens could be mistaken for gameplay and receive joystick input | Loading and recovery states are explicit; non-match frames release controls and skip inference |
+| 5 | `utils.py:interpret_iris_code()` | No `is_safe_ast()` validation, no `__builtins__={}` sandbox | Added AST security check + builtins hardening |
+
+### Remaining Audit Notes
+
+The current audit is tracked in `docs/CODEBASE_AUDIT.md`. Some old high-risk items have already been fixed in this fork, including bounded inference waits, safe `do_state()` dispatch, path-safe TOML helpers, webhook masking, and broader playstyle context variables. Remaining work should focus on emulator-backed validation, config validation coverage, packaging health checks, and platform-specific dependency pinning.

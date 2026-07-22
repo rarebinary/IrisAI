@@ -71,6 +71,6 @@ adb devices
 4. Check `unstuck_movement_delay` in config
 
 ## Getting Help
-- Check the Discord server for community support
+- Open a report at https://github.com/rarebinary/IrisAI/issues with a `--log` session file
 - Search for your error in the Discord support channel
 - Report bugs on GitHub Issues

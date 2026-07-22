@@ -3,7 +3,7 @@
 ## Requirements
 
 **Python:** 3.11+ (tested on 3.12)  
-**OS:** macOS, Windows, Linux  
+**OS:** macOS only (Apple Silicon preferred; Intel supported with CPU inference)
 **Device:** Android device or emulator with Brawl Stars installed  
 
 ### Python Dependencies
@@ -32,17 +32,13 @@ Pillow                 # Image processing
 git clone <repo> IrisAI
 cd IrisAI
 python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### 2. ADB Setup
 ```bash
-# macOS
 brew install android-platform-tools
-
-# Windows
-# Download from: https://developer.android.com/studio/releases/platform-tools
 
 # Verify device
 adb devices
@@ -63,19 +59,64 @@ Edit `cfg/general_config.toml`:
 python main.py
 ```
 
+For troubleshooting, use the detailed terminal mode:
+
+```bash
+python main.py --debug
+```
+
+To record a shareable diagnostic session without showing technical output in the
+terminal, use:
+
+```bash
+python main.py --log
+```
+
+Normal mode keeps the terminal as a calm dashboard with **SYSTEM**, **CURRENT
+RUN**, **LAST MATCHES**, and **RECENT EVENTS**. It does not create a diagnostic
+log unless `--log` is provided. `--debug` includes `--log` behavior and also
+mirrors technical output to the terminal for live troubleshooting.
+
+While recording, both the terminal Dashboard and Web UI display the absolute log
+path. Pressing `Ctrl+C`, closing normally, receiving `SIGTERM`/`SIGHUP`, or
+exiting after an exception finalizes the file before the process ends. The
+terminal then prints **Session log saved** and the exact file to share.
+
+Each diagnostic log contains environment metadata, captured stdout/stderr, the
+exit reason, elapsed time, current-run data, session totals, recent events, and
+the latest ten matches. A fallback `atexit` handler closes the file if normal
+shutdown code cannot finish; `SIGKILL` and machine power loss cannot be captured.
+
+### Dry Run
+
+Use this before a real install when you want to see what IrisAI would do without installing dependencies or downloading models:
+
+```bash
+python install.py --dry-run --no-adb --cpu
+```
+
+The dry run prints the dependency plan, checks existing models, skips downloads, and runs the health check.
+
 ## Build (Nuitka)
 
-The project can be compiled to a standalone executable:
+The project can be compiled to a standalone macOS app:
 
 ```bash
 pip install nuitka
-python setup.py build_exe
+python build_nuitka.py
 ```
 
 Nuitka compatibility notes:
 - `main.py` monkey-patches `inspect.getfile` to prevent crashes
 - `debug_view.py` handles `__compiled__` detection
 - `utils.py` has frozen/bundled path resolution for `easyocr` models
+- macOS builds must include `native/macos_vision_ocr.swift`; Iris compiles this
+  helper into the runtime directory on first use. Xcode Command Line Tools are
+  recommended. If `swiftc` is unavailable, selection falls back to EasyOCR.
+
+### macOS FFmpeg Wheel Warning
+
+On macOS, importing both `opencv-python` (`cv2`) and `av` can load duplicate FFmpeg/AVFoundation symbols when the installed wheels bundle different FFmpeg versions. A smoke import may print warnings about `AVFFrameReceiver` or `AVFAudioReceiver` being implemented twice. Treat that as a packaging stability risk: pin compatible `opencv-python` and `av` versions per release profile, and validate the environment in `install.py` before telling users the install is healthy.
 
 ## Configuration Checks
 
@@ -86,6 +127,28 @@ Before first run:
 4. Set `run_for_minutes` if you want auto-stop
 5. Add brawlers to queue via Web UI
 
+The same checks are also available through `health.py` and the Web UI bootstrap:
+- macOS host and native Vision compiler availability
+- Runtime data directory writable
+- TOML files readable
+- Inference mode limited to `auto`, `coreml`, or `cpu`
+- ONNX models present and matching manifest hashes when hashes exist
+- EasyOCR model files present
+- Optional Python modules and ADB availability
+
+## Runtime Data
+
+Generated runtime files are stored under `.iris_runtime/` by default and ignored by Git:
+- `latest_brawler_data.json`
+- `match_history.csv`
+- `logs/iris-session_<date>_<pid>.log` (only with `--log` or `--debug`)
+- `debug_frames/`
+
+Set `IRIS_RUNTIME_DIR=/path/to/data` to move those files elsewhere for packaged builds or user-specific installs. IrisAI still reads old legacy files from the project root or `cfg/` when no runtime copy exists, so existing local data is not stranded.
+
+The terminal dashboard's runtime view is in-memory and resets when IrisAI exits;
+use the session logs and match-history CSV for persistent diagnostics and records.
+
 ## Project Installation (pip)
 
 ```bash
@@ -94,11 +157,15 @@ pip install -e .  # development install
 python setup.py install
 ```
 
-## Docker
+## Containers
 
-A Docker setup would require:
-- Android emulator (or ADB bridge to host)
-- GPU passthrough for CUDA/CoreML (optional)
-- X11/VNC for debug view (optional)
+Containers are intentionally unsupported. IrisAI depends on native macOS Vision/CoreML services and direct ADB access, so the supported release format is the macOS `.app` bundle.
 
-No Dockerfile is currently included.
+## Release Readiness Checklist
+
+Before packaging or pushing a release:
+1. Run `python3 -m compileall -q .` with bytecode output disabled or clean generated `__pycache__` afterward.
+2. Verify Web UI imports and config payloads without an emulator attached.
+3. Run an ADB/scrcpy smoke test on the target macOS architecture.
+4. Verify `models/manifest.json` hashes and EasyOCR model presence.
+5. Confirm generated runtime files (`latest_brawler_data.json`, logs, debug frames) are not accidentally committed unless intentionally included.
